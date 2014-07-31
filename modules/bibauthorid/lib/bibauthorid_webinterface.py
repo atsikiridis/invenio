@@ -90,7 +90,7 @@ from invenio.bibauthorid_name_utils import split_name_parts
 from invenio.orcidutils import push_orcid_papers
 
 
-from invenio.bibauthorid_dashboard import WebAuthorDashboard
+from invenio.bibauthorid_disambiguation import WebAuthorDashboard
 
 TEMPLATE = load('bibauthorid')
 
