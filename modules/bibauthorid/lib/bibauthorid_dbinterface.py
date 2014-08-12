@@ -35,12 +35,6 @@ from itertools import groupby, count, ifilter, chain, imap, repeat
 from operator import itemgetter
 
 from invenio.search_engine_utils import get_fieldvalues
-from invenio.access_control_engine import acc_authorize_action
-from invenio.config import CFG_SITE_URL
-
-from invenio.dbquery import run_sql
-from invenio import bibtask
-
 from msgpack import packb as serialize
 from msgpack import unpackb as deserialize
 
@@ -50,7 +44,6 @@ except ImportError:
     from invenio.bibauthorid_general_utils import defaultdict
 
 from invenio.dbquery import run_sql
-from invenio.htmlutils import X
 from invenio.search_engine import perform_request_search, get_record
 from invenio.bibrecord import record_get_field_value, \
     record_get_field_instances
@@ -60,8 +53,11 @@ from invenio.bibauthorid_name_utils import split_name_parts, \
 from invenio.bibauthorid_general_utils import memoized
 from invenio.bibauthorid_general_utils import monitored
 from invenio.bibauthorid_logutils import Logger
+from invenio.bibauthorid_name_utils import generate_last_name_cluster_str
+
+import cPickle
+
 import time
-from intbitset import intbitset
 
 
 # run_sql = monitored(run_sql)
@@ -1022,11 +1018,16 @@ def get_coauthors_of_author(pid, excluding_recs=None):  # get_coauthor_pids
     @type excluding_recs: list [int,]
     '''
     recs = get_confirmed_papers_of_author(pid)
+
+    return get_coauthors_from_paperrecs(pid, recs, excluding_recs)
+
+def get_coauthors_from_paperrecs(pid, recs, excluding_recs=None, exclude_author=True):
+
     if excluding_recs:
-	exclude_set = set(excluding_recs)
+        exclude_set = set(excluding_recs)
         recs = set(recs) - exclude_set
     else:
-	exclude_set = set()
+        exclude_set = set()
 
     if not recs:
         return list()
@@ -1036,7 +1037,12 @@ def get_coauthors_of_author(pid, excluding_recs=None):  # get_coauthor_pids
                    'where bibrec in %s '
                    'and flag > -2' % recs_sqlstr)
 
-    pids = set([(int(p), int(r)) for p, r in pids if (int(p) != int(pid) and int(r) not in exclude_set)])
+    if exclude_author:
+        pids = set([(int(p), int(r)) for p, r in pids if \
+                (int(p) != int(pid) and \
+                 int(r) not in exclude_set)])
+    else:
+        pids = set([(int(p), int(r)) for p, r in pids if int(r) not in exclude_set])
     pids = sorted([p for p, r in pids])
     pids = groupby(pids)
     pids = [(key, len(list(val))) for key, val in pids]
@@ -2780,33 +2786,34 @@ def back_up_author_paper_associations():  # copy_personids
 # ********** getters **********#
 
 
-def get_papers_affected_since(date_from, date_to=None):  # personid_get_recids_affected_since
-    """
-    Gets the records whose bibauthorid informations changed between
-    date_from and date_to (inclusive).
-    
-    If date_to is None, gets the records whose bibauthorid informations
-    changed after date_to (inclusive).
-    
-    @param date_from: the date after which this function will look for
-        affected records.
-    @type date_from: datetime.datetime
-    
-    @param date_to: the date before which this function will look for
-        affected records. Currently this is not supported and is
-        ignored. Should be supported in the future.
-    @type date_to: datetime.datetime or None
-    
-    @return: affected record ids
-    @return type: intbitset
-    """
-    recs = run_sql("""select bibrec from aidPERSONIDPAPERS where
-                      last_updated >= %s or personid in
-                      (select personid from aidPERSONIDDATA where
-                      last_updated >= %s)""", (date_from, date_from))
+def get_papers_affected_since(since):  # personid_get_recids_affected_since
+    '''
+    Gets the set of papers which were manually changed after the specified
+    timestamp.
 
-    return intbitset([rec[0] for rec in recs])
+    @param since: consider changes after the specified timestamp
+    @type since: datetime.datetime
 
+    @return: paper identifiers
+    @rtype: list [int,]
+    '''
+    recs = set(_split_signature_string(sig[0])[2] for sig in run_sql("""select distinct value
+                                                                       from aidUSERINPUTLOG
+                                                                       where timestamp >= %s""",
+              (since,)) if ',' in sig[0] and ':' in sig[0])
+
+    pids = set(int(pid[0]) for pid in run_sql("""select distinct personid
+                                                 from aidUSERINPUTLOG
+                                                 where timestamp >= %s""",
+              (since,)) if pid[0] > 0)
+
+    if pids:
+        pids_sqlstr = _get_sqlstr_from_set(pids)
+        recs |= set(rec[0] for rec in run_sql("""select bibrec from aidPERSONIDPAPERS
+                                                 where personid in %s"""
+                                              % pids_sqlstr))
+
+    return list(recs)
 
 
 def get_papers_info_of_author(pid, flag,  # get_person_papers
@@ -3079,15 +3086,22 @@ def get_clusters_by_surname(surname):  # get_lastname_results
                   (surname + '.%',))
 
 
-def get_cluster_names():  # get_existing_result_clusters
+def get_cluster_names(surname=None):  # get_existing_result_clusters
     '''
     Gets all cluster names.
 
     @return: cluster names
     @rtype: tuple ((str),)
     '''
-    return set(run_sql("""select personid
-                          from aidRESULTS"""))
+    query = "select personid from aidRESULTS"
+    if surname:
+        where_q = "where personid like %s"
+        surname += '.%'
+    else:
+        where_q = ""
+    result = set(run_sql(' '.join([query, where_q]),
+                      (surname,) if surname else None))
+    return [element[0] for element in result]
 
 
 def duplicated_tortoise_results_exist():  # check_results
@@ -4643,7 +4657,7 @@ def remove_all_signatures_from_authors(pids):  # remove_personid_papers
                 % pids_sqlstr)
 
 
-def get_authors_by_surname(surname, limit_to_recid=False):  # find_pids_by_name
+def get_authors_by_surname(surname, limit_to_recid=False, use_m_name=False):  # find_pids_by_name
     '''
     Gets all authors who carry records with the specified surname.
 
@@ -4655,13 +4669,18 @@ def get_authors_by_surname(surname, limit_to_recid=False):  # find_pids_by_name
     '''
 
     if not limit_to_recid:
-        select_query = "select personid, name "
+        if use_m_name:
+            select_query = "select personid, m_name"
+        else:
+            select_query = "select personid, name"
     else:
-        select_query = "select personid "
+        select_query = "select personid"
 
-    return set(run_sql(select_query +
-                       """from aidPERSONIDPAPERS
-                          where name like %s""",
+    if use_m_name:
+        from_where_query = "from aidPERSONIDPAPERS where m_name like %s"
+    else:
+        from_where_query = "from aidPERSONIDPAPERS where name like %s"
+    return set(run_sql(" ".join([select_query, from_where_query]),
                        (surname + ',%',)))
 
 
@@ -4851,15 +4870,23 @@ def remove_clusters_except(excl_surnames):  # remove_results_outside
                (surname + '.%%',))
 
 
-def get_clusters():  # get_full_results
+def get_clusters(personid=True, cluster=None):  # get_full_results
     '''
     Gets all disambiguation algorithm result records.
 
     @return: disambiguation algorithm result records ((name, bibref_table, bibref_value, bibrec),)
     @rtype: tuple ((str, str, int, int),)
     '''
-    return run_sql("""select personid, bibref_table, bibref_value, bibrec
-                      from aidRESULTS""")
+    if personid:
+        select_query = "select personid, bibref_table, bibref_value, bibrec"
+    else:
+        select_query = "select bibref_table, bibref_value, bibrec"
+    if cluster:
+        where_query = "where personid = %s"
+    else:
+        where_query = ''
+    return run_sql(' '.join([select_query, 'from aidRESULTS', where_query]),
+                   (cluster,))
 
 
 def get_existing_papers_and_refs(table, recs, refs):  # get_bibrefrec_subset
@@ -4886,6 +4913,7 @@ def get_existing_papers_and_refs(table, recs, refs):  # get_bibrefrec_subset
     # there are duplicates
     return set(ifilter(lambda x: x[0] in recs and x[1] in refs, contents))
 
+
 #
 # BibRDF utilities. To be refactored and ported to bibauthorid_bibrdfinterface                      #
 #
@@ -4907,5 +4935,222 @@ def author_exists(personid):
     return any((bool(run_sql("select * from aidPERSONIDDATA where personid=%s limit 1", (personid,))),
                 bool(run_sql("select * from aidPERSONIDPAPERS where personid=%s limit 1", (personid,)))))
 
-def get_disambiguation_tasks(status):
+
+
+# Disambiguation web interface
+
+def get_last_name_by_pid(pid):
+    query = "select distinct m_name from aidPERSONIDPAPERS where personid= %s"
+    try:
+        return generate_last_name_cluster_str(run_sql(query, (pid,))[0][0])
+    except IndexError:
+        return None
+
+def add_new_disambiguation_task(task_id, cluster, name_of_user, threshold):
+    args = serialize({'threshold': threshold, 'user': name_of_user})
+    query = """insert into aidDISAMBIGUATIONLOG (taskid, surname, args)
+               values (%s, %s, %s)"""
+    run_sql(query, (task_id, cluster, args))
+
+
+def update_disambiguation_task_status(task_id, status):
+    run_sql("update aidDISAMBIGUATIONLOG set status=%s where taskid=%s",
+            (status, task_id))
+            
+def set_task_start_time(task_id, start_time):
+    run_sql("update aidDISAMBIGUATIONLOG set start_time=%s where taskid=%s",
+            (start_time, task_id))
+
+def set_task_end_time(task_id, end_time):
+    run_sql("update aidDISAMBIGUATIONLOG set end_time=%s where taskid=%s",
+            (end_time, task_id))
+
+
+def get_disambiguation_task_data(status=None):
+    base_query = """select taskid, surname, phase, progress, args, start_time,
+                    end_time from aidDISAMBIGUATIONLOG"""
+    try:
+        query = ' '.join([base_query, "where status=%s"])
+        task_data = list(run_sql(query, (status,)))
+    except IndexError:
+        task_data = list(run_sql(base_query))
+
+    for index, data in enumerate(task_data):
+        task_data[index] = [deserialize(el) if i == 4 else el
+                            for i, el in enumerate(list(data))]
+
+    return task_data
+
+
+def get_disambiguation_task_stats(task_id):
+    query = "select stats from aidDISAMBIGUATIONSTATS where taskid=%s"
+    stats = run_sql(query, (task_id,))[0][0]
+    return cPickle.loads(stats)
+
+
+def get_status_of_task_by_task_id(task_id):
+    query = "select status from aidDISAMBIGUATIONLOG where taskid=%s"
+    try:
+        return run_sql(query, (task_id,))[0][0]
+    except IndexError:
+        raise TaskNotRegisteredError
+
+
+def get_task_id_by_cluster_name(cluster, status=None):
+    query = "select taskid from aidDISAMBIGUATIONLOG where surname=%s"
+    try:
+        if status:
+            query = " ".join([query, "and status=%s"])
+            return run_sql(query, (cluster, status))[0][0]
+        return run_sql(query, (cluster,))[0][0]
+    except IndexError:
+        msg = "No task for cluster = %s" % cluster
+        if status:
+            msg = ' '.join([msg, 'and status = %s' % status])
+        raise TaskNotRegisteredError(msg)
+
+
+def get_cluster_info_by_task_id(task_id):
+    query = "select surname, args from aidDISAMBIGUATIONLOG where taskid=%s"
+    try:
+        results = run_sql(query, (task_id,))[0]
+    except IndexError:
+        raise TaskNotRegisteredError()
+    return results[0], deserialize(results[1])['threshold']
+
+
+def get_bibsched_task_id_by_task_name(task_name):  # For some reason get_task_ids_by_descending_date does not work TODO
+    try:
+        return run_sql("select id from schTASK where proc=%s",
+                       (task_name,))[0][0]
+    except IndexError:
+        raise TaskNotRegisteredError()
+
+class TaskNotRegisteredError(Exception):
+    """
+    To be raised when a task has not been registered to the
+    aidDISAMBIGUATIONLOG table.
+    """
     pass
+
+
+class TaskAlreadyRunningError(Exception):
+    """
+    To be raised when task is already running.
+    """
+    pass
+
+
+class TaskNotRunningError(Exception):
+    """
+    To be raised when task is not running.
+    """
+    pass
+
+
+class TaskNotSuccessfulError(Exception):
+    """
+    To be raised when task not completed succesffully.
+    """
+    pass
+
+
+# Disambiguation statistics
+def register_disambiguation_statistics(task_id, stats):
+    stats_blob = cPickle.dumps(stats)
+    q = "insert into aidDISAMBIGUATIONSTATS (taskid, stats) VALUES (%s, %s)"
+    run_sql(q, (task_id, stats_blob))
+
+
+def get_number_of_profiles(name):
+    """
+    (aidPERSONIDPAPERS, after disambiguation)
+    """
+    real_profs = len(get_authors_by_surname(name, limit_to_recid=True))
+    disambiguated_profs = len(get_disambiguation_profiles(name))
+    return real_profs, disambiguated_profs
+
+
+def get_disambiguation_profiles(name):
+    return run_sql("""select distinct personid from aidRESULTS
+                      where personid like %s """, (name + '.%',))
+
+
+def _get_no_of_disambiguation_papers(name):
+    return run_sql("""select count(distinct bibrec) from aidRESULTS
+                      where personid like %s """, (name + '.%',))[0][0]
+
+
+def get_papers_per_disambiguation_cluster(name):
+    no_of_papers = _get_no_of_disambiguation_papers(name)
+    try:
+        return no_of_papers / float(len(get_disambiguation_profiles(name)))
+    except ZeroDivisionError:
+        pass
+
+
+def get_profiles_with_changes(name):
+
+    main_query = """select distinct personid, count(bibrec) as total
+                    from aidRESULTS where personid like '%s' group
+                    by personid""" % (name+'.%',)
+
+    aid_result_result = run_sql(main_query)
+    return aid_result_result
+
+
+def get_ratios_of_claims(name):
+    """
+    Ratio of claimed / unclaimed for each name cluster.
+    """
+    claimed = run_sql(""" select personid, count(bibrec)
+                          from aidPERSONIDPAPERS where (flag = 2 or flag =-2)
+                          and name like %s group by personid""",
+                      (name + ',%',))
+
+    unclaimed = run_sql(""" select  p.personid , count( distinct r.bibrec) from
+                            aidRESULTS as r, aidPERSONIDPAPERS as p  where
+                            r.bibref_value = p.bibref_value
+                            and r.bibrec = p.bibrec
+                            and r.personid like %s
+                            group by r.personid""",
+                        (name + '.%',))
+    ratios = list()
+    for uncl in unclaimed:
+        for cl in claimed:
+            if uncl[0] == cl[0]:
+                try:
+                    ratio = cl[1] / float(uncl[1])
+                except ZeroDivisionError:
+                    ratio = '-'
+                ratios.append((uncl[0], ratio))
+                break
+    return ratios
+
+
+def get_average_ratio_of_claims(name):
+    ratios = [ratio for _, ratio in get_ratios_of_claims(name)]
+    try:
+        return sum(ratios) / len(ratios)
+    except ZeroDivisionError:   # TODO Be sure here...
+        return 0
+
+
+def get_name_from_bibref(bibref):
+
+    if bibref[0] == 100:
+        name = run_sql("select value from bib10x where id = %d" % bibref[1])
+
+    if bibref[0] == 700:
+        name = run_sql("select value from bib70x where id = %d" % bibref[1])
+
+    return name[0][0]
+
+
+def get_bibrefs_of_person(pid):
+    try:
+        return set(run_sql("""select bibref_table, bibref_value, bibrec
+                              from aidPERSONIDPAPERS where personid = %s
+                              and flag > -2""", (pid,)))
+    except IndexError:
+        pass
