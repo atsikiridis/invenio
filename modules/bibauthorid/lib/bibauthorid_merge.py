@@ -36,6 +36,7 @@ from invenio.bibauthorid_backinterface import get_ordered_author_and_status_of_s
 from invenio.bibauthorid_backinterface import remove_empty_authors
 from invenio.bibauthorid_backinterface import get_paper_to_author_and_status_mapping
 from invenio.bibauthorid_backinterface import get_authors_by_surname
+from invenio.bibauthorid_backinterface import get_papers_of_author
 
 logger = Logger("merge")
 
@@ -279,7 +280,7 @@ def merge_static():
     update_canonical_names_of_authors()
 
 
-def merge_dynamic():
+def merge_dynamic(lname=None, signatures=None):
     '''
         This function merges aidPERSONIDPAPERS with aidRESULTS.
         Use it after tortoise.
@@ -287,7 +288,11 @@ def merge_dynamic():
         hence the claiming faciity for example can stay online during the merge. This comfort
         however is paid off in term of speed.
     '''
-    last_names = frozenset(name[0].split('.')[0] for name in get_cluster_names())
+
+    if lname:
+        last_names = [lname]
+    else:
+        last_names = frozenset(name[0].split('.')[0] for name in get_cluster_names())
 
     def get_free_pids():
         while True:
@@ -324,16 +329,17 @@ def merge_dynamic():
 
     for idx, last in enumerate(last_names):
         logger.update_status(float(idx) / len(last_names), "%d/%d current: %s" % (idx, len(last_names), last))
-        
-        results = get_signatures_for_merge_cluster_by_surname(last)
-        
-        best_match, old_pids = get_merge_matching_matrix_and_pids(results)
-        
-        matched_clusters = get_matched_clusters(best_match, results, old_pids)
-        
-        not_matched_clusters = get_unmatched_clusters(best_match, results)
 
-        not_matched_clusters = izip((results[i][1] for i in not_matched_clusters), free_pids)
+        if not signatures:
+            signatures = get_signatures_for_merge_cluster_by_surname(last)
+        
+        best_match, old_pids = get_merge_matching_matrix_and_pids(signatures)
+        
+        matched_clusters = _get_matched_clusters(best_match, signatures, old_pids)
+        
+        not_matched_clusters = _get_unmatched_clusters(best_match, signatures)
+
+        not_matched_clusters = izip((signatures[i][1] for i in not_matched_clusters), free_pids)
         
         for sigs, pid in chain(matched_clusters, not_matched_clusters):
             for sig in sigs:
@@ -404,16 +410,35 @@ def get_merge_matching_matrix_and_pids(results):
     return best_match, old_pids
 
 
-def get_matched_clusters(best_match_matrix, results, pids):
+def get_matched_clusters(name):
+    results = get_signatures_for_merge_cluster_by_surname(name)
+
+    best_match, old_pids = get_merge_matching_matrix_and_pids(results)
+
+    return _get_matched_clusters(best_match, results, old_pids)
+
+
+def get_unmatched_clusters(name):
+    results = get_signatures_for_merge_cluster_by_surname(name)
+
+    best_match, _ = get_merge_matching_matrix_and_pids(results)
+
+    return _get_unmatched_clusters(best_match, results)
+
+
+def _get_matched_clusters(best_match_matrix, results, pids, pids_only=False):
     '''
         Returns clusters from aidRESULTS that have matching with others in
         aidPERSONNIDPAPERS.
     '''
+    if pids_only:
+        return [pids[old_idx] for _, old_idx, score in best_match_matrix
+                if score > 0]
     return [(results[new_idx][1], pids[old_idx])
             for new_idx, old_idx, score in best_match_matrix if score > 0]
     
     
-def get_unmatched_clusters(best_match_matrix, results):
+def _get_unmatched_clusters(best_match_matrix, results):
     '''
         Returns clusters from aidRESULTS that have no matchings with others in
         aidPERSONNIDPAPERS.
@@ -421,12 +446,33 @@ def get_unmatched_clusters(best_match_matrix, results):
     return frozenset(xrange(len(results))) - frozenset(
         imap(itemgetter(0), [x for x in best_match_matrix if x[2] > 0]))
 
-def matched_claims(inspect=None):
+def get_abandoned_profiles(name):
+    """
+        For a given surname, returns the personids that are not included in
+        aidRESULTS (the results of the latest disambiguation).
+    """
+    pids_in_aidpersonidpapers = get_authors_by_surname(name,
+                                                       limit_to_recid=True)
+    pids_in_aidpersonidpapers = set(p[0] for p in pids_in_aidpersonidpapers)
+
+    results = get_signatures_for_merge_cluster_by_surname(name)
+    best_match, old_pids = get_merge_matching_matrix_and_pids(results)
+    pids_in_aidresults = _get_matched_clusters(best_match, results, old_pids,
+                                              pids_only=True)
+
+    return pids_in_aidpersonidpapers - set(pids_in_aidresults)
+
+def get_matched_claims(lname=None, inspect=None):
     '''
         Checks how many claims are violated in aidRESULTS.
         Returs the number of preserved and the total number of claims.
     '''
-    last_names = frozenset(name[0].split('.')[0] for name in get_cluster_names())
+
+    if lname:
+        last_names = [lname]
+    else:
+        last_names = frozenset(name[0].split('.')[0]
+                               for name in get_cluster_names())
     r_match = 0
     r_total = 0
 
