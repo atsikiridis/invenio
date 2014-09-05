@@ -57,8 +57,6 @@ from invenio.bibauthorid_name_utils import generate_last_name_cluster_str
 
 import cPickle
 
-import cPickle
-
 import time
 
 
