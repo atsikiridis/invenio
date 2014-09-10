@@ -128,7 +128,7 @@ class WebAuthorPages(WebInterfaceDirectory):
                 ('publications-graph', 'create_authorpage_pubs_graph'),
                 ('publications-list', 'create_authorpage_pubs_list'),
                 ('announcements', 'create_announcements_box'),
-                ('fake-publications-list', 'create_authorpage_pubs_list')]
+                ('fake-publications-list', 'create_fake_authorpage_pubs_list')]
 
 
     def __init__(self, identifier=None):
@@ -185,6 +185,7 @@ class WebAuthorPages(WebInterfaceDirectory):
             - /author/profile/100:5522,1431 shows the page of the author
               identified by the bibrefrec: '100:5522,1431'
         '''
+
         if not component in self._exports:
             return WebAuthorPages(component), path
 
@@ -473,7 +474,7 @@ class WebAuthorPages(WebInterfaceDirectory):
                 person_id = json_data['personId']
 
                 if json_data.has_key('fake'):
-                    namesdict, namesdictStatus = FakeProfile.get_person_names_dicts(person_id)
+                    namesdict, namesdictStatus = FakeProfile.get_person_names_dicts(person_id, json_data['task_id'])
                 else:
                     namesdict, namesdictStatus = get_person_names_dicts(person_id)
                 if not namesdict:
@@ -502,8 +503,8 @@ class WebAuthorPages(WebInterfaceDirectory):
                 person_id = json_data['personId']
 
                 if json_data.has_key('fake'):
-                    pubs, pubsStatus = FakeProfile.get_pubs(person_id)
-                    selfpubs, selfpubsStatus = FakeProfile.get_selfpubs(person_id)
+                    pubs, pubsStatus = FakeProfile.get_pubs(person_id, json_data['task_id'])
+                    selfpubs, selfpubsStatus = FakeProfile.get_selfpubs(person_id, json_data['task_id'])
                 else:
                     pubs, pubsStatus = get_pubs(person_id)
                     selfpubs, selfpubsStatus = get_self_pubs(person_id)
@@ -536,7 +537,7 @@ class WebAuthorPages(WebInterfaceDirectory):
                 person_id = json_data['personId']
 
                 if json_data.has_key('fake'):
-                    kwtuples, kwtuplesStatus = FakeProfile.get_kwtuples(person_id)
+                    kwtuples, kwtuplesStatus = FakeProfile.get_kwtuples(person_id, json_data['task_id'])
                 else:
                     kwtuples, kwtuplesStatus = get_kwtuples(person_id)
                 if kwtuples:
@@ -564,7 +565,7 @@ class WebAuthorPages(WebInterfaceDirectory):
                 person_id = json_data['personId']
 
                 if json_data.has_key('fake'):
-                    fieldtuples, fieldtuplesStatus = FakeProfile.get_fieldtuples(person_id)
+                    fieldtuples, fieldtuplesStatus = FakeProfile.get_fieldtuples(person_id, json_data['task_id'])
                 else:
                     fieldtuples, fieldtuplesStatus = get_fieldtuples(person_id)
                 if fieldtuples:
@@ -591,7 +592,7 @@ class WebAuthorPages(WebInterfaceDirectory):
                 person_id = json_data['personId']
 
                 if json_data.has_key('fake'):
-                    author_aff_pubs, author_aff_pubsStatus = FakeProfile.get_institute_pubs(person_id)
+                    author_aff_pubs, author_aff_pubsStatus = FakeProfile.get_institute_pubs(person_id, json_data['task_id'])
                 else:
                     author_aff_pubs, author_aff_pubsStatus = get_institute_pubs(person_id)
 
@@ -616,13 +617,13 @@ class WebAuthorPages(WebInterfaceDirectory):
                     bibauthorid_data = {'is_baid': True, 'pid': person_id, 'cid': person_link}
 
                 if json_data.has_key('fake'):
-                    coauthors, coauthorsStatus = FakeProfile.get_coauthors(person_id)
+                    coauthors, coauthorsStatus = FakeProfile.get_coauthors(person_id, json_data['task_id'])
                 else:
                     coauthors, coauthorsStatus = get_coauthors(person_id)
                 if not coauthors:
                     coauthors = dict()
 
-                json_response = {'status': coauthorsStatus, 'html': webauthorprofile_templates.tmpl_coauthor_box(bibauthorid_data, coauthors, ln='en', loading=not coauthorsStatus)}
+                json_response = {'status': coauthorsStatus, 'html': webauthorprofile_templates.tmpl_coauthor_box(bibauthorid_data, coauthors, ln='en', loading=not coauthorsStatus, fake=json_data.has_key('fake'))}
                 req.content_type = 'application/json'
                 return json.dumps(json_response)
 
@@ -636,8 +637,8 @@ class WebAuthorPages(WebInterfaceDirectory):
                 person_id = json_data['personId']
 
                 if 'fake' in json_data:
-                    citation_data, cache_status = FakeProfile.get_summarize_records(person_id)
-                    records, records_cache_status = FakeProfile.get_pubs(person_id)
+                    citation_data, cache_status = FakeProfile.get_summarize_records(person_id, json_data['task_id'])
+                    records, records_cache_status = FakeProfile.get_pubs(person_id, json_data['task_id'])
                 else:
                     citation_data, cache_status = get_summarize_records(person_id)
                     records, records_cache_status = get_pubs(person_id)
@@ -679,7 +680,7 @@ class WebAuthorPages(WebInterfaceDirectory):
                 person_id = json_data['personId']
 
                 if json_data.has_key('fake'):
-                    pubs_per_year, pubs_per_yearStatus = FakeProfile.get_pubs_per_year(person_id)
+                    pubs_per_year, pubs_per_yearStatus = FakeProfile.get_pubs_per_year(person_id, json_data['task_id'])
                 else:
                     pubs_per_year, pubs_per_yearStatus = get_pubs_per_year(person_id)
                 if not pubs_per_year:
@@ -712,13 +713,18 @@ class WebAuthorPages(WebInterfaceDirectory):
                     context['fake'] = True
 
                 context.update({
-                    'cname': webapi.get_canonical_id_from_person_id(person_id),
                     'link_to_record': ulevel == "admin",
                     'hepnames_link': "%s/%s/" % (CFG_BASE_URL, "record"),
                     'new_record_link': 'http://slac.stanford.edu/spires/hepnames/additions.shtml',
                     'update_link': "http://inspirehep.net/person/update?IRN=",
                     'profile_link': "%s/%s" % (CFG_BASE_URL, "author/profile/")
                 })
+
+                if isinstance(person_id, int):
+                    context['cname'] = webapi.get_canonical_id_from_person_id(person_id)
+                else:
+                    #Fake profile case
+                    context['cname'] = person_id
 
                 content = WebProfilePage.render_template('personal_details_box', context)
 
@@ -735,7 +741,7 @@ class WebAuthorPages(WebInterfaceDirectory):
                 person_id = json_data['personId']
 
                 if json_data.has_key('fake'):
-                    collab, collabStatus = FakeProfile.get_collabtuples(person_id)
+                    collab, collabStatus = FakeProfile.get_collabtuples(person_id, json_data['task_id'])
                 else:
                     collab, collabStatus = get_collabtuples(person_id)
 
@@ -757,13 +763,39 @@ class WebAuthorPages(WebInterfaceDirectory):
             if 'personId' in json_data:
                 person_id = json_data['personId']
 
-                internal_pubs, internal_pubsStatus = get_internal_publications(person_id)
+                fake = -1
+                # -1 - true profile
+                # 0 - true list used for comparision
+                # 1 - false list used for comparision
+
+                if json_data.has_key('fake'):
+                    fake = json_data['fake']
+
+                if fake == 1:
+                    internal_pubs, internal_pubsStatus = FakeProfile.get_internal_publications(person_id, json_data['task_id'])
+                    old_pubs, old_pubsStatus = get_internal_publications(person_id)
+                    common_set = set(internal_pubs).intersection(set(old_pubs))
+                    added_pubs = {k: v for (k, v) in internal_pubs.iteritems() if k not in common_set }
+                    removed_pubs = {k: v for (k, v) in old_pubs.iteritems() if k not in common_set }
+                else:
+                    internal_pubs, internal_pubsStatus = get_internal_publications(person_id)
+                    added_pubs = None
+                    removed_pubs = None
+
                 external_pubs, external_pubsStatus = get_external_publications(person_id)
                 datasets_pubs, datasets_pubsStatus = get_datasets(person_id)
 
                 if internal_pubs is not None and internal_pubsStatus is True:
-                    internal_pubs = sorted([(title, get_inspire_record_url(recid), recid) for recid, title
-                                            in internal_pubs.iteritems()], key=lambda x: x[2], reverse=True)[0:10]
+                    if fake == 1:
+                        added_pubs = sorted([(title, get_inspire_record_url(recid), recid) for recid, title
+                                            in added_pubs.iteritems()], key=lambda x: x[2], reverse=True)
+                        removed_pubs = sorted([(title, get_inspire_record_url(recid), recid) for recid, title
+                                            in removed_pubs.iteritems()], key=lambda x: x[2], reverse=True)
+                    else:
+                        internal_pubs = sorted([(title, get_inspire_record_url(recid), recid) for recid, title
+                                            in internal_pubs.iteritems()], key=lambda x: x[2], reverse=True)
+                    if fake == -1:
+                        internal_pubs = internal_pubs[0:10]
                 else:
                     internal_pubs = list()
 
@@ -773,20 +805,19 @@ class WebAuthorPages(WebInterfaceDirectory):
                 else:
                     datasets_pubs_to_display = list()
 
-                arxiv_pubs = list()
-                doi_pubs = list()
-                if external_pubs is not None and external_pubsStatus is True:
-                    if 'arxiv' in external_pubs:
-                        arxiv_pubs = [(title, get_arxiv_url(arxiv_id), 'arxiv')
-                                      for arxiv_id, title
+                if json_data.has_key('fake'):
+                    external_pubs = []
+                    external_pubsStatus = True
+                    datasets_pubsStatus = True
+                else:
+                    try:
+                        arxiv_pubs = [(title, get_arxiv_url(arxiv_id), 'arxiv') for arxiv_id, title
                                       in external_pubs['arxiv'].iteritems()]
+                        doi_pubs = [(title, get_doi_url(doi_id), 'doi') for doi_id, title in external_pubs['doi'].iteritems()]
 
-                    if 'doi' in external_pubs:
-                        doi_pubs = [(title, get_doi_url(doi_id), 'doi')
-                        for doi_id, title
-                        in external_pubs['doi'].iteritems()]
-
-                external_pubs = arxiv_pubs + doi_pubs
+                        external_pubs = arxiv_pubs + doi_pubs
+                    except:
+                        external_pubs = []
 
                 try:
                     canonical_name = get_canonical_name_of_author(person_id)[0][0]
@@ -802,20 +833,38 @@ class WebAuthorPages(WebInterfaceDirectory):
                 #TODO An operator should be introduced as this will not work for authors with many records.
                 datasets_search_link = "%s/search?cc=Data&p=%s" % (CFG_BASE_URL, '+or+'.join(datasets_pubs_recs))
 
-                json_response = {
-                    'status': (internal_pubsStatus and external_pubsStatus and datasets_pubsStatus),
-                    'html': WebProfilePage.render_publications_box_content({
-                        "internal_pubs": internal_pubs,
-                        "external_pubs": external_pubs,
-                        "datasets": datasets_pubs_to_display,
-                        "all_pubs_search_link": all_pubs_search_link,
-                        "data_sets_search_link": datasets_search_link,
-                        "base_url": CFG_BASE_URL
-                    })
-                }
+
+                if fake > -1:
+                    json_response = {
+                        'status': (internal_pubsStatus and external_pubsStatus and datasets_pubsStatus),
+                        'html': WebProfilePage.render_publications_list_content({
+                            "internal_pubs": internal_pubs,
+                            "base_url": CFG_BASE_URL,
+                            "added_pubs" : added_pubs,
+                            "removed_pubs" : removed_pubs,
+                            "fake" : fake
+                        })
+                    }
+                else:
+                    json_response = {
+                        'status': (internal_pubsStatus and external_pubsStatus and datasets_pubsStatus),
+                        'html': WebProfilePage.render_publications_box_content({
+                            "internal_pubs": internal_pubs,
+                            "external_pubs": external_pubs,
+                            "datasets": datasets_pubs_to_display,
+                            "all_pubs_search_link": all_pubs_search_link,
+                            "data_sets_search_link": datasets_search_link,
+                            "base_url": CFG_BASE_URL,
+                        })
+                    }
 
                 req.content_type = 'application/json'
                 return json.dumps(json_response)
+
+    @wrap_json_req_profiler
+    def create_fake_authorpage_pubs_list(self, req, form):
+        json_dumps = self.create_authorpage_pubs_list(req, form)
+        return json_dumps
 
     def last_computed(self):
         return get_person_oldest_date(self.person_id)
