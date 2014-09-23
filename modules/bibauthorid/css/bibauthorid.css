@@ -814,3 +814,11 @@ ul.pub-tabs, .pub-tabs li {
 #recomputeProfile-disabled {
     pointer-events: auto;
 }
+
+.addpubs {
+    color: #a2c065;
+}
+
+.rempubs {
+    color: #bb5555;
+}
