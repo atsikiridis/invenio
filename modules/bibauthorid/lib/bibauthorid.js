@@ -1882,8 +1882,7 @@ jQuery(function($) {
 
 $(document).ready(function() {
 
-    //disambiguation table options
-    $('#tortoiseTable').dataTable( {
+    var dataTablesDict = {
         "bLengthChange": false,
         "bFilter": false,
         "iDisplayLength" : 100,
@@ -1893,7 +1892,17 @@ $(document).ready(function() {
                 "sPrevious" : '<div class="btn btn-default">Previous</div>'
             }
         }
-    } );
+    };
+
+    $('#tortoiseTable').dataTable( dataTablesDict );
+
+    dataTablesDict["iDisplayLength"] = 10;
+
+    $('#runningJobs').dataTable( dataTablesDict );
+    $('#failedJobs').dataTable( dataTablesDict );
+
+    dataTablesDict["bFilter"] = true;
+    $('#completedJobs').dataTable( dataTablesDict );
 
     var BoxLoader = function BoxLoader( num, minTime ) {
 
