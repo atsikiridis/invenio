@@ -162,7 +162,7 @@ class MonitoredDisambiguation(object):
         stats['Number of Total Claims'] = total_claims
         try:
             percentage = preserved_claims / float(total_claims) * 100
-        except:
+        except ZeroDivisionError:
             percentage = 100
         stats['Percentage of Preserved Claims'] = '%s %%' % percentage
 
