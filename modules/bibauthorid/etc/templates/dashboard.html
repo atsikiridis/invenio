@@ -1,186 +1,133 @@
 {% extends "index.html" %}
 {% block content %}
-<br><br>
+
+{% macro task_table(content, table_id, title, running=False, profiles=False) %}
+<div class="well inspire-well">
+    <div class="bai-box-title">
+      <span>{{ title }}</span>
+    </div>
+
+  <div class="tortoiseSingleResults">
+  <table id="{{ table_id }}" class="table table-striped table-hover table-bordered tortoise">
+      <thead>
+          <th>
+                 <span class="glyphicon glyphicon-sort-by-alphabet"></span> Bibsched Process ID
+          </th>
+          <th>
+                 <span class="glyphicon glyphicon-sort-by-alphabet"></span> Cluster
+          </th>
+          {% if running %}
+          <th>
+                 Progress
+          </th>
+          {% endif %}
+          <th>
+                 <span class="glyphicon glyphicon-sort-by-alphabet"></span> Threshold
+          </th>
+          <th>
+                 <span class="glyphicon glyphicon-sort-by-alphabet"></span> Start
+          </th>
+          <th>
+                 {% if running %}
+                 Kill
+                 {% else %}
+                 <span class="glyphicon glyphicon-sort-by-alphabet"></span> End
+                 {% endif %}
+          </th>
+      </thead>
+      <tbody>
+      {% for bibsched_id, cluster, phase, progress, args, start, end in content %}
+      <tr>
+          <td>
+                 {% if profiles %}
+                 <a href="{{ base_url }}/author/disambiguation/{{ bibsched_id }}">{{ bibsched_id }}</a>
+                 {% else %}
+                 {{ bibsched_id }}
+                 {% endif %}
+          </td>
+          <td>
+                 {{ cluster }}
+          </td>
+          {% if running %}
+          <td>
+                 {{ phase }}  <progress value="{{ progress }}" max="1"></progress><br>
+          </td>
+          {% endif %}
+          <td>
+                 {{ args['threshold'] }}
+          </td>
+          <td>
+                 {{ start }}
+          </td>
+          <td>
+                 {% if running %}
+                   <form name="kill-form" action="" method="post">
+                        <input type="hidden" name="kill-task-id" value="{{ bibsched_id }}" />
+                    <button class="btn btn-default btn-xs" type="submit" >
+                        Kill
+                    </button>
+                   </form>
+                 {% else %}
+                 {{ end }}
+                 {% endif %}
+          </td>
+      </tr>
+      {% endfor %}
+      </tbody>
+
+  </table>
+
+  {% if running %}
+    <form class="refresh-form" method="post" action="">
+      <button class="btn btn-default btn-primary" type="button" onclick="document.getElementsByClassName('refresh-form')[0].submit();">
+          <span class="glyphicon glyphicon-refresh"></span>Refresh
+      </button>
+    </form>
+  {% endif %}
+
+  </div>
+
+</div>
+
+{% endmacro %}
+
+
+<div class="col-md-offset-1 col-md-3">
+
+    <div class="well inspire-well">
+    <div class="bai-box-title">
+      <span>Run algorithm</span>
+    </div>
+    <form class="disambiguate-form form-inline" method="post" action="" >
+        <table class="table" width="100%" cellpadding="0" cellspacing="10" border="0">
+
+            <div class="input-group">
+              <span class="input-group-addon">Surname  </span>
+              <input type="text" class="form-control" name="surname">
+            </div><p>
+            <div class="input-group">
+              <span class="input-group-addon">Threshold</span>
+              <input type="text" class="form-control" name="threshold">
+            </div><p><p>
+            <button class="btn btn-default" type="submit" >
+                Disambiguate!
+            </button>
+        </table>
+    </form>
+    </div>
+
+</div>
+
+<div class="col-md-7">
+
+{{ task_table(running_disambiguation_tasks, "runningJobs", "Running Jobs", running=True) }}
+</div>
 
 <div class="col-md-offset-1 col-md-10">
-    <form class="disambiguate-form form-inline" method="post" action="" >
-        <table class="table condensed well inspire-well" width="100%" cellpadding="0" cellspacing="10" border="0">
-            {% for n in range(1) %}
-            <tr>
-                <td valign="top">
-                       Surname: <input type="text" name="surname"><br>
-                </td>
-                <td valign="top">
-                       Threshold: <input type="text" name="threshold"><br>
-                </td>
 
-                <td>
-                    <button class="btn btn-default" type="submit" >
-                        Disambiguate!
-                    </button>
-                </td>
-            </tr>
-            {% endfor %}
-        </table>
-        <br><br>
-    </form>
+{{ task_table(completed_disambiguation_tasks, "completedJobs", "Completed Jobs", profiles=True) }}
 
+{{ task_table(failed_disambiguation_tasks, "failedJobs", "Failed Jobs") }}
 
-<form class="refresh-form" method="post" action="">
-    <button class="btn btn-default" type="button" onclick="document.getElementsByClassName('refresh-form')[0].submit();">
-        <span class="glyphicon glyphicon-refresh"></span>Refresh
-    </button>
-</form>
-
-<br><br>
-
-
-Running Jobs
-<table class="table-striped table-hover" width="100%" border="1">
-    <tr>
-        <td width="16.6%" valign="top">
-               Bibsched Process id <br>  
-        </td>
-        <td  width="16.6%" valign="top">
-               Cluster<br>  
-        </td>
-        <td  width="16.6%" valign="top">
-               Progress<br>  
-        </td>
-        <td width="16.6%" valign="top">
-               Args<br>  
-        </td>
-        <td width="16.6%" valign="top">
-               Start <br>  
-        </td>
-        <td width="16.6%" valign="top">
-               Kill job <br>  
-        </td>
-    </tr>
-    {% for bibsched_id, cluster, phase, progress, args, start, end in running_disambiguation_tasks %}
-    <tr>
-        <td width="16.6%" valign="top">
-               {{ bibsched_id }}<br>  
-        </td>
-        <td  width="16.6%" valign="top">
-               {{ cluster }}<br>  
-        </td>
-        <td  width="16.6%" valign="top">
-               {{ phase }}  <progress value="{{ progress }}" max="1"></progress><br>
-        </td>
-        <td width="16.6%" valign="top">
-               {{ args }}<br>  
-        </td>
-        <td width="16.6%" valign="top">               
-               {{ start }} <br>
-        </td>
-        <td width="16.6%" valign="top">
-               <form name="kill-form" action="" method="post">
-                    <input type="hidden" name="kill-task-id" value="{{ bibsched_id }}" />
-                <button class="btn btn-default" type="submit" >
-                    Kill
-                </button>
-               </form>
-        </td>
-    </tr>
-    {% endfor %}
-</table>
-
-<br><br>
-
-Completed Jobs
-
-<table class="table-striped table-hover" width="100%" border="1">
-    <tr>
-        <td width="16.6%" valign="top">
-               Bibsched Process id <br>  
-        </td>
-        <td  width="16.6%" valign="top">
-               Cluster<br>  
-        </td>
-        <td  width="16.6%" valign="top">
-               Progress<br>  
-        </td>
-        <td width="16.6%" valign="top">
-               Args <br>  
-        </td>
-        <td width="16.6%" valign="top">
-               Start<br>
-        <td width="16.6%" valign="top">
-               End<br>
-        </td>
-    </tr>
-    {% for bibsched_id, cluster, phase, progress, args, start, end in completed_disambiguation_tasks %}
-    <tr>
-        <td width="16.6%" valign="top">
-               <a href="{{ base_url }}/author/disambiguation/{{ bibsched_id }}">{{ bibsched_id }}</a><br>
-        </td>
-        <td  width="16.6%" valign="top">
-               {{ cluster }}<br>  
-        </td>
-        <td  width="16.6%" valign="top">
-               {{ phase }}  <progress value="{{ progress }}" max="1"></progress><br>
-        </td>
-        <td width="16.6%" valign="top">
-               {{ args }}<br>  
-        </td>
-        <td width="16.6%" valign="top">
-               {{ start }} <br>
-        </td>
-        <td width="16.6%" valign="top">
-               {{ end }} <br>  
-        </td>
-    </tr>
-    {% endfor %}
-</table>
-
-
-<br><br>
-
-Failed Jobs
-
-<table class="table-striped table-hover" width="100%" border="1">
-    <tr>
-        <td width="16.6%" valign="top">
-               Bibsched Process id <br>  
-        </td>
-        <td  width="16.6%" valign="top">
-               Cluster<br>  
-        </td>
-        <td  width="16.6%" valign="top">
-               Progress<br>  
-        </td>
-        <td width="16.6%" valign="top">
-               Args <br>  
-        </td>
-        <td width="16.6%" valign="top">
-               Start<br>
-        <td width="16.6%" valign="top">
-               End<br>
-        </td>
-    </tr>
-    {% for bibsched_id, cluster, phase, progress, args, start, end in failed_disambiguation_tasks %}
-    <tr>
-        <td width="16.6%" valign="top">
-               {{ bibsched_id }}<br>  
-        </td>
-        <td  width="16.6%" valign="top">
-               {{ cluster }}<br>  
-        </td>
-        <td  width="16.6%" valign="top">
-               {{ phase }}  <progress value="{{ progress }}" max="1"></progress><br>
-        </td>
-        <td width="16.6%" valign="top">
-               {{ args }}<br>  
-        </td>
-        <td width="16.6%" valign="top">
-               {{ start }} <br>
-        </td>
-        <td width="16.6%" valign="top">
-               {{ end }} <br>
-        </td>
-    </tr>
-    {% endfor %}
-</table>
 </div>
 {% endblock %}

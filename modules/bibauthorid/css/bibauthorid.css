@@ -726,6 +726,40 @@
     border: 1px solid #dddddd;
 }
 
+#runningJobs_info {
+    margin: 5px 5px 10px;
+}
+
+#runningJobs_previous {
+    margin: 5px;
+}
+
+#runningJobs_next {
+    margin: 5px;
+}
+#completedJobs_info {
+    margin: 5px 5px 10px;
+}
+
+#completedJobs_previous {
+    margin: 5px;
+}
+
+#completedJobs_next {
+    margin: 5px;
+}
+#failedJobs_info {
+    margin: 5px 5px 10px;
+}
+
+#failedJobs_previous {
+    margin: 5px;
+}
+
+#failedJobs_next {
+    margin: 5px;
+}
+
 #tortoiseTable_info {
     margin: 0px 5px 10px;
 }
@@ -754,6 +788,10 @@
     max-height: 300px;
     overflow-y: auto;
 
+}
+
+.refresh-form {
+    margin: 10px 5px;
 }
 
 ul.pub-tabs>li> a.pub-tab-active {
