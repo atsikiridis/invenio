@@ -5095,14 +5095,17 @@ def get_ratios_of_claims(name):
     """
     claimed = run_sql(""" select  r.personid , count( distinct r.bibrec) from
                           aidRESULTS as r, aidPERSONIDPAPERS as p  where
-                          r.bibref_value = p.bibref_value  and r.personid like
+                          r.bibref_value = p.bibref_value and
+                          p.bibrec = r.bibrec  and r.personid like
                           %s and flag=2  group by r.personid""",
                       (name + '.%',))
 
     unclaimed = run_sql(""" select  r.personid , count( distinct r.bibrec) from
                             aidRESULTS as r, aidPERSONIDPAPERS as p  where
-                            r.bibref_value = p.bibref_value  and r.personid
-                            like %s and flag<>2  group by r.personid""",
+                            r.bibref_value = p.bibref_value
+                            and r.bibrec = p.bibrec
+                            and r.personid like %s and flag<>2
+                            group by r.personid""",
                         (name + '.%',))
     ratios = list()
     for uncl in unclaimed:
