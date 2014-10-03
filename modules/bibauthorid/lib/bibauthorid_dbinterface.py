@@ -5076,7 +5076,10 @@ def _get_no_of_disambiguation_papers(name):
 
 def get_papers_per_disambiguation_cluster(name):
     no_of_papers = _get_no_of_disambiguation_papers(name)
-    return no_of_papers / float(len(get_disambiguation_profiles(name)))
+    try:
+        return no_of_papers / float(len(get_disambiguation_profiles(name)))
+    except ZeroDivisionError:
+        pass
 
 
 def get_profiles_with_changes(name):
@@ -5091,20 +5094,18 @@ def get_profiles_with_changes(name):
 
 def get_ratios_of_claims(name):
     """
-    claimed / unclaimed. TODO improve ?
+    Ratio of claimed / unclaimed for each name cluster.
     """
-    claimed = run_sql(""" select  r.personid , count( distinct r.bibrec) from
-                          aidRESULTS as r, aidPERSONIDPAPERS as p  where
-                          r.bibref_value = p.bibref_value and
-                          p.bibrec = r.bibrec  and r.personid like
-                          %s and flag=2  group by r.personid""",
-                      (name + '.%',))
+    claimed = run_sql(""" select personid, count(bibrec)
+                          from aidPERSONIDPAPERS where (flag = 2 or flag =-2)
+                          and name like %s group by personid""",
+                      (name + ',%',))
 
-    unclaimed = run_sql(""" select  r.personid , count( distinct r.bibrec) from
+    unclaimed = run_sql(""" select  p.personid , count( distinct r.bibrec) from
                             aidRESULTS as r, aidPERSONIDPAPERS as p  where
                             r.bibref_value = p.bibref_value
                             and r.bibrec = p.bibrec
-                            and r.personid like %s and flag<>2
+                            and r.personid like %s
                             group by r.personid""",
                         (name + '.%',))
     ratios = list()
@@ -5119,9 +5120,14 @@ def get_ratios_of_claims(name):
                 break
     return ratios
 
+
 def get_average_ratio_of_claims(name):
     ratios = [ratio for _, ratio in get_ratios_of_claims(name)]
-    return sum(ratios) / len(ratios)
+    try:
+        return sum(ratios) / len(ratios)
+    except ZeroDivisionError:   # TODO Be sure here...
+        return 0
+
 
 def get_name_from_bibref(bibref):
 

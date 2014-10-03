@@ -71,6 +71,8 @@ from invenio.webauthorprofile_corefunctions import _get_pubs_per_year_dictionary
 from invenio.webauthorprofile_corefunctions import _get_kwtuples_bai
 from invenio.webauthorprofile_corefunctions import _get_fieldtuples_bai_tup
 
+from invenio.bibauthorid_name_utils import generate_last_name_cluster_str
+
 from invenio.webauthorprofile_config import deserialize
 
 from invenio.webinterface_handler import wash_urlargd, WebInterfaceDirectory
@@ -156,17 +158,8 @@ class MonitoredDisambiguation(object):
         ratio_claims_title = 'Average Ratio of Claimed and Unclaimed Papers'
         ratio_claims = get_average_ratio_of_claims(self._name)
         stats[ratio_claims_title] = round(ratio_claims, 2)
-
-        preserved_claims, total_claims = get_matched_claims(self._name)
-        stats['Number of Preserved Claims'] = preserved_claims
-        stats['Number of Total Claims'] = total_claims
-        try:
-            percentage = preserved_claims / float(total_claims) * 100
-        except ZeroDivisionError:
-            percentage = 100
-        stats['Percentage of Preserved Claims'] = '%s %%' % percentage
-
         return stats
+
 
     def _calculate_rankings(self):
 
@@ -241,18 +234,23 @@ class MonitoredDisambiguation(object):
 class DisambiguationTask(object):
 
     """A scheduled task to run disambiguation on a particular cluster
-    (surname).
+    (name).
     """
 
-    def __init__(self, task_id=None, cluster=None, name_of_user='admin',
+    def __init__(self, task_id=None, name=None, name_of_user='admin',
                  threshold=WEDGE_THRESHOLD):
         try:
-            assert task_id or cluster
+            assert task_id or name
         except AssertionError:
-            raise Exception("A taskid or a surname should be specified.")
+            raise Exception("A taskid or a name should be specified.")
 
         self._task_id = task_id
-        self._cluster = cluster
+
+        if name:
+            self._cluster = generate_last_name_cluster_str(name)
+        else:
+            self._cluster = None
+
         self._name_of_user = name_of_user
         self._threshold = threshold
         self._statistics = None
@@ -348,18 +346,23 @@ class WebAuthorDashboard(WebInterfaceDirectory):
             return page_not_authorized(req, text=msg)
 
         argd = wash_urlargd(form, {'ln': (str, CFG_SITE_LANG),
-                                   'surname': (str, None),
+                                   'name': (str, None),
                                    'threshold': (str, None),
                                    'kill-task-id': (str, False)})
 
-        surname = argd['surname']
-        if surname:
+        name = argd['name']
+        if name:
             threshold = argd['threshold']
             username = session['user_info']['nickname']
-            task = DisambiguationTask(cluster=surname.lower(),
+            task = DisambiguationTask(name=name.lower(),
                                       threshold=threshold,
                                       name_of_user=username)
-            task.schedule()
+            try:
+                task.schedule()
+            except TaskAlreadyRunningError, e:
+                return page_not_authorized(req, text=e.message)
+
+
 
         task_to_kill = argd['kill-task-id']
         if task_to_kill:
@@ -420,8 +423,8 @@ class WebAuthorDisambiguationInfo(WebInterfaceDirectory):
         web_page = WebProfilePage('disambiguation', page_title)
 
         if argd['should-merge']:
-            surname = get_cluster_info_by_task_id(self._task_id)[0]
-            merge_disambiguation_results(surname)
+            name = get_cluster_info_by_task_id(self._task_id)[0]
+            merge_disambiguation_results(name)
             update_disambiguation_task_status(self._task_id, 'MERGED')
 
         merged = get_status_of_task_by_task_id(self._task_id) == 'MERGED'
@@ -458,6 +461,7 @@ class WebAuthorDisambiguationInfo(WebInterfaceDirectory):
             return WebAuthorProfileComparison(path[1], component), []
         else:
             raise apache.SERVER_RETURN(apache.HTTP_NOT_FOUND)
+
 
 
 class WebAuthorProfileComparison(WebInterfaceDirectory):
