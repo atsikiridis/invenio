@@ -63,7 +63,9 @@ def create_blobs_by_pids(pids):
     @type pids: iterable of integers
     '''
     all_bibs = get_confirmed_papers_of_authors(pids)
-    all_bibs = ((x[0], (int(x[1]), x[2], x[3]), x[4]) for x in all_bibs)
+    all_bibs = ((x[0], (int(x[1]), x[2], x[3]), x[4]) for x in all_bibs
+                if -2 < x[4] < 2)
+
     bibs_dict = groupby(sorted(all_bibs, key=itemgetter(1)), key=itemgetter(1))
     blobs = [Blob(list(bibs)) for _, bibs in bibs_dict]
 

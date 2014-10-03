@@ -183,7 +183,7 @@ def _task_run_core():
 
     if bibtask.task_get_option("disambiguate"):
         last_names = bibtask.task_get_option('last-names')
-        from_scratch = True   # TODO Pay attention to this after we are sure we want aid_tables disambiguation. 
+        from_scratch = False   # TODO Pay attention to this after we are sure we want aid_tables disambiguation.
         single_threaded = bool(bibtask.task_get_option("single-threaded"))
         if single_threaded and not last_names:
             bibtask.write_message("""--single-threaded will not be considered
