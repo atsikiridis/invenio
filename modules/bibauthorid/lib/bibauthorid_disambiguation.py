@@ -3,6 +3,7 @@
 from collections import OrderedDict
 from datetime import datetime
 from signal import SIGTERM
+from collections import defaultdict
 
 from invenio.bibauthorid_config import CFG_BIBAUTHORID_ENABLED, \
     WEDGE_THRESHOLD, AID_VISIBILITY
@@ -36,6 +37,10 @@ from invenio.bibauthorid_dbinterface import get_pid_to_canonical_name_map
 from invenio.bibauthorid_dbinterface import get_title_of_paper
 from invenio.bibauthorid_dbinterface import get_collaborations_for_paper
 from invenio.bibauthorid_dbinterface import get_coauthors_from_paperrecs
+from invenio.bibauthorid_dbinterface import get_cluster_names
+from invenio.bibauthorid_dbinterface import get_bibrefs_of_person
+
+from invenio.bibauthorid_webapi import get_person_id_from_paper
 
 from invenio.bibauthorid_general_utils import memoized
 
@@ -103,6 +108,9 @@ class MonitoredDisambiguation(object):
 
     def __init__(self, get_task_name):
         self._get_task_name = get_task_name
+        self._pid_to_cname_map = get_pid_to_canonical_name_map()
+        self._name = 'ellis'
+        self._task_id = 465296
 
     def __call__(self, tortoise_func):
 
@@ -129,7 +137,7 @@ class MonitoredDisambiguation(object):
 
             statistics = dict()
             statistics['stats'] = self._calculate_stats()
-            statistics['rankings'] = self._calculate_rankings()
+            statistics['changes'] = self._calculate_changes()
 
             register_disambiguation_statistics(self._task_id, statistics)
 
@@ -160,75 +168,80 @@ class MonitoredDisambiguation(object):
         stats[ratio_claims_title] = round(ratio_claims, 2)
         return stats
 
+    def _calculate_changes(self):
 
-    def _calculate_rankings(self):
 
-        task_name = self._task_id
-        rankings = dict()
 
-        all_modified_profiles = get_profiles_with_changes(self._name)
+        def get_records_streams(pid, disambiguation_papers):
+            records_streams = list()
+            try:
+                original_cname = self._pid_to_cname_map[pid]
+            except KeyError:
+                original_cname = pid
 
-        abandoned_profiles = get_abandoned_profiles(self._name)
+            papers_sources = defaultdict(set)
+            papers_destinations = defaultdict(set)
 
+            real_papers = get_bibrefs_of_person(pid)
+
+            try:
+                papers_added = list(disambiguation_papers - real_papers)
+            except TypeError:
+                papers_added = disambiguation_papers
+
+            for paper in papers_added:
+                source_pid = get_person_id_from_paper('%s:%s,%s' % paper)
+                papers_sources[source_pid].add(paper)
+
+            try:
+                papers_removed = list(real_papers - disambiguation_papers)
+            except TypeError:
+                papers_removed = list(real_papers if real_papers else list())
+
+            for paper in papers_removed:
+                for bibrefs_per_pid, destination_pid in all_clusters:
+                    print bibrefs_per_pid, destination_pid, paper
+                    if paper in bibrefs_per_pid:
+                        papers_destinations[destination_pid].add(paper)
+                        break
+
+            for source_pid, papers in papers_sources.iteritems():
+                source_cname = self._pid_to_cname_map[source_pid]
+                if source_cname != original_cname:
+                    stream = tuple(papers), source_cname, original_cname
+                    records_streams.append(stream)
+
+            for destination_pid, papers in papers_destinations.iteritems():
+                destination_cname = self._pid_to_cname_map[destination_pid]
+                if destination_cname != original_cname:
+                    stream = tuple(papers), original_cname, destination_cname
+                    records_streams.append(stream)
+
+            return records_streams
+
+        all_modified_profiles = get_cluster_names(self._name)
         all_clusters = get_matched_clusters(self._name)
 
-        for name, changes in all_modified_profiles:
+        changes = list()
 
-            clusters = get_disambiguation_matching(name, task_name)
+        for name in all_modified_profiles:
 
-            pid = ''
-            bibrefs = []
-            papers = []
+            matched_bibrefs = get_disambiguation_matching(name, self._task_id)
+            real_pid = None
 
-            first_cluster = clusters[0]
-            for _bibrefs, _pid in all_clusters:
-                if not pid:
-                    for bibref in _bibrefs:
-                        if first_cluster == bibref:
-                            pid = _pid
-                            bibrefs = _bibrefs
-                            break
+            for bibrefs, pid in all_clusters:
+                if any(bibref in matched_bibrefs for bibref in bibrefs):
+                    real_pid = pid
+                    break
+            if not real_pid:
+                real_pid = name
 
-            truly_changed = added = changes
-            bibrecs = {(x,) for _, _, x in bibrefs}
-            papers = get_papers_of_author(pid)
-            removed = 0
 
-            if pid:
-                if bibrefs:
-                    removed = len(papers.difference(bibrecs))
-                    added = len(bibrecs.difference(papers))
-                    truly_changed = removed + added
+            streams = get_records_streams(real_pid, matched_bibrefs)
+            if streams:
+                changes.append(streams)
 
-            if pid == '':
-                status = 'new cluster'
-            elif truly_changed == 0:
-                status = 'unmodified'
-            else:
-                status = 'modified'
-
-            rankings[(name, pid)] = {
-                'status' : status,
-                'removed' : removed,
-                'added' : added,
-                'cname' : web_api.get_person_redirect_link(pid) if pid else '',
-                'after_disambiguation' : len(bibrecs),
-                'before_disambiguation' :  len(papers)
-            }
-
-        for profile in abandoned_profiles:
-            papers = get_papers_of_author(profile)
-            rankings[('', profile)] = {
-                'status' : 'abandoned',
-                #All papers were removed from this poor guy
-                'removed': len(papers),
-                'added' : 0,
-                'cname' : web_api.get_person_redirect_link(profile),
-                'after_disambiguation' : 0,
-                'before_disambiguation' : len(papers)
-            }
-
-        return rankings
+        return changes
 
 
 class DisambiguationTask(object):

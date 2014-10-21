@@ -43,83 +43,26 @@
                 <table id="tortoiseTable" class="table table-striped table-bordered table-hover tortoise">
                 <thead>
                   <tr>
-                      <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> Name</th>
-                      <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> Status</th>
-                      <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> Nr of papers (after)</th>
-                      <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> Nr of papers (before)</th>
-                      <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> Added</th>
-                      <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> Removed</th>
+                      <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> Papers</th>
+                      <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> From</th>
+                      <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> To</th>
                       <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> Apply Disambiguation to One Profile</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {% for key, value in statistics['rankings'].iteritems() %}
-                  <tr>
-                    <td><a href={{ '%s%s' % (fake_profile_base_url, key[1]) }}>{{ value['cname'] }}</a></td>
-                    <td>
-                      <!-- A hack for sorter -->
-                      <div class={{ 'key[0]' }}>
-                      {% if not key[1] %}
-                      <a href={{ '%s%s' % (fake_profile_base_url, key[0]) }}>{{ value['status'] }}</a>
-                      {% else %}
-                      <a href={{ '%s%s' % (fake_profile_base_url, key[1]) }}>{{ value['status'] }}</a>
-                      {% endif %}
-                    </td>
-                    <td>{{ value['after_disambiguation'] }}</td>
-                    <td>{{ value['before_disambiguation'] }}</td>
-                    <td>{{ value['added'] }}</td>
-                    <td>{{ value['removed'] }}</td>
-                    <td><a href="{{ '%s/%s' % (merge_profile_base_url, key[1] if key[1] else key[0]) }}">
-                        {{ 'Apply Disambiguation to ' +  ( value['cname'] if value['cname'] else key[0])  if value['status'] != 'unmodified' else ''}}</a>
-                    </td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-                </table>
-                </div>
-            </div>
-        </div>
+                    {% for entry in statistics['changes'] %}
+                        <tr>
+                            <td>{{ entry[0][0] }} </td>
+                            <td>{{ entry[0][1] }} </td>
+                            <td>{{ entry[0][2] }}</td>
+                            <td>Apply Disambiguation</td>
+                        </tr>
+                {% endfor %}
 
-        <div class="col-md-6">
-            <div class="well inspire-well">
-                <div class="bai-box-title">
-                  <span>Profiles</span>
-                </div>
-                <div class="tortoiseSingleResults">
-                <table id="tortoiseTable" class="table table-striped table-bordered table-hover tortoise">
-                <thead>
-                  <tr>
-                      <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> Name</th>
-                      <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> Status</th>
-                      <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> Nr of papers (after)</th>
-                      <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> Nr of papers (before)</th>
-                      <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> Added</th>
-                      <th><span class="glyphicon glyphicon-sort-by-alphabet"></span> Removed</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for key, value in statistics['rankings'].iteritems() %}
-                  <tr>
-                    <td><a href={{ '%s%s' % (fake_profile_base_url, key[1]) }}>{{ value['cname'] }}</a></td>
-                    <td>
-                      <!-- A hack for sorter -->
-                      <div class={{ 'key[0]' }}>
-                      {% if not key[1] %}
-                      <a href={{ '%s%s' % (fake_profile_base_url, key[0]) }}>{{ value['status'] }}</a>
-                      {% else %}
-                      <a href={{ '%s%s' % (fake_profile_base_url, key[1]) }}>{{ value['status'] }}</a>
-                      {% endif %}
-                    </td>
-                    <td>{{ value['after_disambiguation'] }}</td>
-                    <td>{{ value['before_disambiguation'] }}</td>
-                    <td>{{ value['added'] }}</td>
-                    <td>{{ value['removed'] }}</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-                </table>
+                 </tbody>
+                    </table>
+                    </div>
                 </div>
             </div>
-        </div>
 
 {% endblock %}
