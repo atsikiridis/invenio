@@ -3086,15 +3086,22 @@ def get_clusters_by_surname(surname):  # get_lastname_results
                   (surname + '.%',))
 
 
-def get_cluster_names():  # get_existing_result_clusters
+def get_cluster_names(surname=None):  # get_existing_result_clusters
     '''
     Gets all cluster names.
 
     @return: cluster names
     @rtype: tuple ((str),)
     '''
-    return set(run_sql("""select personid
-                          from aidRESULTS"""))
+    query = "select personid from aidRESULTS"
+    if surname:
+        where_q = "where personid like %s"
+        surname += '.%'
+    else:
+        where_q = ""
+    result = set(run_sql(' '.join([query, where_q]),
+                      (surname,) if surname else None))
+    return [element[0] for element in result]
 
 
 def duplicated_tortoise_results_exist():  # check_results
@@ -5138,3 +5145,12 @@ def get_name_from_bibref(bibref):
         name = run_sql("select value from bib70x where id = %d" % bibref[1])
 
     return name[0][0]
+
+
+def get_bibrefs_of_person(pid):
+    try:
+        return set(run_sql("""select bibref_table, bibref_value, bibrec
+                              from aidPERSONIDPAPERS where personid = %s
+                              and flag > -2""", (pid,))[0][0])
+    except IndexError:
+        pass

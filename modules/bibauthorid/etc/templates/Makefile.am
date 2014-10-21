@@ -34,9 +34,7 @@ etc_DATA    = head.html \
             dashboard.html \
             disambiguation.html \
             profile_comparison.html \
-            fake_profile.html \
-            apply_disambiguation.html
-
+            fake_profile.html
 EXTRA_DIST = $(etc_DATA)
 
 CLEANFILES = *~ *.tmp
