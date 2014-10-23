@@ -1894,7 +1894,7 @@ $(document).ready(function() {
         }
     };
 
-    $('#tortoiseTable').dataTable( dataTablesDict );
+    //$('#tortoiseTable').dataTable( dataTablesDict );
 
     dataTablesDict["iDisplayLength"] = 10;
 
