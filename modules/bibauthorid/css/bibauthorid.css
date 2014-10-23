@@ -772,6 +772,10 @@
     margin: 5px;
 }
 
+#tortoiseTable .collapse.in {
+    display: table-row; !important
+}
+
 .bai-box-title span {
     padding-bottom: 5px;
     display: block;

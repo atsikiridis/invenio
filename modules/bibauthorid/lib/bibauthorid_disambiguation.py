@@ -159,13 +159,10 @@ class MonitoredDisambiguation(object):
         stats['Number of Profiles Before'] = profiles_before
         stats['Number of Profiles After'] = profiles_after
 
-        avg_p_title = 'Number of Papers per Disambiguation Cluster'
+        avg_p_title = 'Average Papers per Disambiguation Cluster'
         papers_per_cluster = get_papers_per_disambiguation_cluster(self._name)
         stats[avg_p_title] = round(papers_per_cluster, 2)
 
-        ratio_claims_title = 'Average Ratio of Claimed and Unclaimed Papers'
-        ratio_claims = get_average_ratio_of_claims(self._name)
-        stats[ratio_claims_title] = round(ratio_claims, 2)
         return stats
 
     def _calculate_changes(self):
@@ -191,7 +188,8 @@ class MonitoredDisambiguation(object):
 
             for paper in papers_added:
                 source_pid = get_person_id_from_paper('%s:%s,%s' % paper)
-                papers_sources[source_pid].add(paper)
+                title = get_title_of_paper(paper[2])
+                papers_sources[source_pid].add((title, paper))
 
             try:
                 papers_removed = list(real_papers - disambiguation_papers)
@@ -200,9 +198,9 @@ class MonitoredDisambiguation(object):
 
             for paper in papers_removed:
                 for bibrefs_per_pid, destination_pid in all_clusters:
-                    print bibrefs_per_pid, destination_pid, paper
                     if paper in bibrefs_per_pid:
-                        papers_destinations[destination_pid].add(paper)
+                        title = get_title_of_paper(paper[2])
+                        papers_destinations[destination_pid].add(title, paper)
                         break
 
             for source_pid, papers in papers_sources.iteritems():
