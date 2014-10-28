@@ -1904,6 +1904,36 @@ $(document).ready(function() {
     dataTablesDict["bFilter"] = true;
     $('#completedJobs').dataTable( dataTablesDict );
 
+    var updateSummary = function() {
+        $(".summaryItem").each(function (){
+            $(this).html($(this).attr("data_count") + ", +" + $(this).attr("data_added") + ", -" + $(this).attr("data_removed"));
+        });
+    };
+
+    updateSummary();
+
+    $('.toMergeCheckBox').click(function() {
+        var name_from = $(this).attr("data_summary_from");
+        var name_to = $(this).attr("data_summary_to");
+        var n_moves = parseInt($(this).attr("data_summary_count"));
+        var tmp;
+
+        if ($(this).is(':checked')) {
+            tmp = parseInt($(".summaryItem[data_name='" + name_from + "']").attr("data_removed"));
+            $(".summaryItem[data_name='" + name_from + "']").attr("data_removed", tmp + n_moves);
+            tmp = parseInt($(".summaryItem[data_name='" + name_to + "']").attr("data_added"));
+            $(".summaryItem[data_name='" + name_to + "']").attr("data_added", tmp + n_moves);
+        }
+        else {
+            tmp = parseInt($(".summaryItem[data_name='" + name_from + "']").attr("data_removed"));
+            $(".summaryItem[data_name='" + name_from + "']").attr("data_removed", tmp - n_moves);
+            tmp = parseInt($(".summaryItem[data_name='" + name_to + "']").attr("data_added"));
+            $(".summaryItem[data_name='" + name_to + "']").attr("data_added", tmp - n_moves);
+        }
+
+        updateSummary();
+    });
+
     var BoxLoader = function BoxLoader( num, minTime ) {
 
       var init, callbacks, boxStates, requestAllowed, dispatch, runHook,

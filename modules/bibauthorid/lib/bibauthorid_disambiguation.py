@@ -113,7 +113,15 @@ class MonitoredDisambiguation(object):
         self._pid_to_cname_map = get_pid_to_canonical_name_map()
         self._name = 'ellis'
         self._task_id = 465334
+        self._threshold = 0.3
 
+
+        statistics = dict()
+        statistics['stats'] = self._calculate_stats()
+        statistics['changes'] = self._calculate_changes()
+        statistics['summary'] = self._calculate_summary(statistics['changes'])
+
+        register_disambiguation_statistics(self._task_id, statistics)
     def __call__(self, tortoise_func):
 
         def monitored_tortoise(*args, **kwargs):
@@ -243,6 +251,9 @@ class MonitoredDisambiguation(object):
         return changes
 
     def _calculate_summary(self, changes):
+        cname_to_pid = {}
+        for k, v in self._pid_to_cname_map.iteritems():
+            cname_to_pid[v] = k
 
         summary = dict()
 
@@ -263,14 +274,19 @@ class MonitoredDisambiguation(object):
                                                   get_abandoned_profiles(self._name))]
 
         for name in summary.keys():
-            if summary[name][0] == summary[name][1] == 0:
-                summary[name].append("unmodified")
-            elif name not in self._pid_to_cname_map.values():
-                summary[name].append("new")
-            elif name in abandoned:
-                summary[name].append("abandoned")
-            else:
-                summary[name].append("modified")
+            # if summary[name][0] == summary[name][1] == 0:
+            #     summary[name].append("unmodified")
+            # elif name not in cname_to_pid:
+            #     summary[name].append("new")
+            # elif name in abandoned:
+            #     summary[name].append("abandoned")
+            # else:
+            #     summary[name].append("modified")
+
+            try:
+                summary[name].append(len(get_bibrefs_of_person(cname_to_pid[name])))
+            except KeyError:
+                summary[name].append(0)
 
         return summary
 
