@@ -39,6 +39,8 @@ from invenio.bibauthorid_dbinterface import get_collaborations_for_paper
 from invenio.bibauthorid_dbinterface import get_coauthors_from_paperrecs
 from invenio.bibauthorid_dbinterface import get_cluster_names
 from invenio.bibauthorid_dbinterface import get_bibrefs_of_person
+from invenio.bibauthorid_dbinterface import get_authors_by_surname
+from invenio.bibauthorid_dbinterface import get_canonical_name_of_author
 
 from invenio.bibauthorid_webapi import get_person_id_from_paper
 
@@ -110,7 +112,7 @@ class MonitoredDisambiguation(object):
         self._get_task_name = get_task_name
         self._pid_to_cname_map = get_pid_to_canonical_name_map()
         self._name = 'ellis'
-        self._task_id = 465296
+        self._task_id = 465334
 
     def __call__(self, tortoise_func):
 
@@ -138,6 +140,7 @@ class MonitoredDisambiguation(object):
             statistics = dict()
             statistics['stats'] = self._calculate_stats()
             statistics['changes'] = self._calculate_changes()
+            statistics['summary'] = self._calculate_summary(statistics['changes'])
 
             register_disambiguation_statistics(self._task_id, statistics)
 
@@ -166,8 +169,6 @@ class MonitoredDisambiguation(object):
         return stats
 
     def _calculate_changes(self):
-
-
 
         def get_records_streams(pid, disambiguation_papers):
             records_streams = list()
@@ -200,7 +201,7 @@ class MonitoredDisambiguation(object):
                 for bibrefs_per_pid, destination_pid in all_clusters:
                     if paper in bibrefs_per_pid:
                         title = get_title_of_paper(paper[2])
-                        papers_destinations[destination_pid].add(title, paper)
+                        papers_destinations[destination_pid].add((title, paper))
                         break
 
             for source_pid, papers in papers_sources.iteritems():
@@ -240,6 +241,39 @@ class MonitoredDisambiguation(object):
                 changes.append(streams)
 
         return changes
+
+    def _calculate_summary(self, changes):
+
+        summary = dict()
+
+        for change in changes:
+            n_moves = len(change[0][0])
+            name_from = change[0][1]
+            name_to = change[0][2]
+
+            if name_from not in summary:
+                summary[name_from] = [0, 0]
+            if name_to not in summary:
+                summary[name_to] = [0, 0]
+
+            summary[name_from][0] += n_moves
+            summary[name_to][1] += n_moves
+
+        abandoned = [cname[0][0] for cname in map(get_canonical_name_of_author,
+                                                  get_abandoned_profiles(self._name))]
+
+        for name in summary.keys():
+            if summary[name][0] == summary[name][1] == 0:
+                summary[name].append("unmodified")
+            elif name not in self._pid_to_cname_map.values():
+                summary[name].append("new")
+            elif name in abandoned:
+                summary[name].append("abandoned")
+            else:
+                summary[name].append("modified")
+
+        return summary
+
 
 
 class DisambiguationTask(object):
@@ -372,8 +406,6 @@ class WebAuthorDashboard(WebInterfaceDirectory):
                 task.schedule()
             except TaskAlreadyRunningError, e:
                 return page_not_authorized(req, text=e.message)
-
-
 
         task_to_kill = argd['kill-task-id']
         if task_to_kill:

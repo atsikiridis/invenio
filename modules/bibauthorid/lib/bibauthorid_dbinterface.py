@@ -5151,6 +5151,6 @@ def get_bibrefs_of_person(pid):
     try:
         return set(run_sql("""select bibref_table, bibref_value, bibrec
                               from aidPERSONIDPAPERS where personid = %s
-                              and flag > -2""", (pid,))[0][0])
+                              and flag > -2""", (pid,)))
     except IndexError:
         pass
