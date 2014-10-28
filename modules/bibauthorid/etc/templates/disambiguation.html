@@ -30,9 +30,14 @@
                  <span>Summary</span>
                 </div>
                 <div class="tortoiseSingleResults">
-                <table class="table table-striped table-hover well inspire-well" width="100%" cellpadding="0" cellspacing="10" border="1">
-                    <tbody>
+                <table class="table table-striped table-hover well inspire-well summaryTable" width="100%" cellpadding="0" cellspacing="10" border="1">
 
+                    <tbody>
+                    {% for name, diff in statistics['summary'].iteritems() %}
+                        <tr>
+                            <td><small>{{ name }} (<span  class="summaryItem" data_name={{ name }} data_count="{{ diff[2] }}" data_removed="{{ diff[0] }}" data_added="{{ diff[1] }}">{{ diff[2] }}, +{{ diff[1] }}, -{{ diff[0] }})</span>)</small></td>
+                        </tr>
+                    {% endfor %}
                     </tbody>
                 </table>
                 </div>
@@ -62,9 +67,7 @@
                         {% set changes_loop = loop %}
                         <tr>
                             <td>
-                                <label class="checkbox">
-                                    <input type="checkbox" name=" change" value="{{ entry[0][0] | escape }}" checked>
-                                </label>
+                                    <input class="toMergeCheckBox" type="checkbox" name=" change" data_summary_from="{{ entry[0][1] }}" data_summary_to="{{ entry[0][2] }}" data_summary_count="{{ entry[0][0] | length }}" value="{{ entry[0][0] | escape }}" checked="checked">
                             </td>
                             <td>
                                 <a data-toggle="collapse" data-target=".{{ loop.index }}collapsed"  class="clickable">{{ entry[0][0] | length }} papers </a>
@@ -96,10 +99,6 @@
 
                     </div>
             </div>
-
-
         </div>
-
-
 
 {% endblock %}
