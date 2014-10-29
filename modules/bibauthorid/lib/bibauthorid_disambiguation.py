@@ -9,9 +9,6 @@ from invenio.bibauthorid_config import CFG_BIBAUTHORID_ENABLED, \
     WEDGE_THRESHOLD, AID_VISIBILITY
 
 from invenio.bibauthorid_dbinterface import update_disambiguation_task_status
-from invenio.bibauthorid_dbinterface import \
-    get_papers_per_disambiguation_cluster
-from invenio.bibauthorid_dbinterface import get_papers_of_author
 from invenio.bibauthorid_dbinterface import get_status_of_task_by_task_id
 from invenio.bibauthorid_dbinterface import add_new_disambiguation_task
 from invenio.bibauthorid_dbinterface import get_disambiguation_task_data
@@ -23,10 +20,7 @@ from invenio.bibauthorid_dbinterface import TaskNotRunningError
 from invenio.bibauthorid_dbinterface import TaskAlreadyRunningError
 from invenio.bibauthorid_dbinterface import TaskNotSuccessfulError
 from invenio.bibauthorid_dbinterface import register_disambiguation_statistics
-from invenio.bibauthorid_dbinterface import get_number_of_profiles
 from invenio.bibauthorid_dbinterface import get_disambiguation_task_stats
-from invenio.bibauthorid_dbinterface import get_average_ratio_of_claims
-from invenio.bibauthorid_dbinterface import get_profiles_with_changes
 from invenio.bibauthorid_dbinterface import get_bibsched_task_id_by_task_name
 from invenio.bibauthorid_dbinterface import get_cluster_info_by_task_id
 from invenio.bibauthorid_dbinterface import get_clusters
@@ -39,15 +33,11 @@ from invenio.bibauthorid_dbinterface import get_collaborations_for_paper
 from invenio.bibauthorid_dbinterface import get_coauthors_from_paperrecs
 from invenio.bibauthorid_dbinterface import get_cluster_names
 from invenio.bibauthorid_dbinterface import get_bibrefs_of_person
-from invenio.bibauthorid_dbinterface import get_authors_by_surname
-from invenio.bibauthorid_dbinterface import get_canonical_name_of_author
 
 from invenio.bibauthorid_webapi import get_person_id_from_paper
 
 from invenio.bibauthorid_general_utils import memoized
 
-from invenio.bibauthorid_merge import get_matched_claims
-from invenio.bibauthorid_merge import get_abandoned_profiles
 from invenio.bibauthorid_merge import \
     merge_dynamic as merge_disambiguation_results
 from invenio.bibauthorid_merge import get_matched_clusters
@@ -90,6 +80,9 @@ from invenio.webpage import page
 from invenio.webuser import page_not_authorized
 from invenio.webuser import get_session
 
+from itertools import count
+
+
 def _schedule_disambiguation(cluster, name_of_user, threshold):
     """
     Runs the tortoise algorithm for the cluster using the wedge
@@ -112,16 +105,7 @@ class MonitoredDisambiguation(object):
         self._get_task_name = get_task_name
         self._pid_to_cname_map = get_pid_to_canonical_name_map()
         self._name = 'ellis'
-        self._task_id = 465334
-        self._threshold = 0.3
 
-
-        statistics = dict()
-        statistics['stats'] = self._calculate_stats()
-        statistics['changes'] = self._calculate_changes()
-        statistics['summary'] = self._calculate_summary(statistics['changes'])
-
-        register_disambiguation_statistics(self._task_id, statistics)
     def __call__(self, tortoise_func):
 
         def monitored_tortoise(*args, **kwargs):
@@ -142,13 +126,12 @@ class MonitoredDisambiguation(object):
                 set_task_end_time(self._task_id, datetime.now())
                 update_disambiguation_task_status(self._task_id, 'FAILED')
                 raise e
-                # TODO get failure info.
             set_task_end_time(self._task_id, datetime.now())
 
             statistics = dict()
             statistics['stats'] = self._calculate_stats()
-            statistics['changes'] = self._calculate_changes()
-            statistics['summary'] = self._calculate_summary(statistics['changes'])
+            changes = statistics['changes'] = self._calculate_changes()
+            statistics['summary'] = self._calculate_summary(changes)
 
             register_disambiguation_statistics(self._task_id, statistics)
 
@@ -165,14 +148,6 @@ class MonitoredDisambiguation(object):
         stats['Task ID'] = self._task_id
         stats['Name'] = self._name
         stats['Wedge Threshold'] = self._threshold
-
-        profiles_before, profiles_after = get_number_of_profiles(self._name)
-        stats['Number of Profiles Before'] = profiles_before
-        stats['Number of Profiles After'] = profiles_after
-
-        avg_p_title = 'Average Papers per Disambiguation Cluster'
-        papers_per_cluster = get_papers_per_disambiguation_cluster(self._name)
-        stats[avg_p_title] = round(papers_per_cluster, 2)
 
         return stats
 
@@ -270,18 +245,7 @@ class MonitoredDisambiguation(object):
             summary[name_from][0] += n_moves
             summary[name_to][1] += n_moves
 
-        abandoned = [cname[0][0] for cname in map(get_canonical_name_of_author,
-                                                  get_abandoned_profiles(self._name))]
-
         for name in summary.keys():
-            # if summary[name][0] == summary[name][1] == 0:
-            #     summary[name].append("unmodified")
-            # elif name not in cname_to_pid:
-            #     summary[name].append("new")
-            # elif name in abandoned:
-            #     summary[name].append("abandoned")
-            # else:
-            #     summary[name].append("modified")
 
             try:
                 summary[name].append(len(get_bibrefs_of_person(cname_to_pid[name])))
@@ -465,8 +429,14 @@ class WebAuthorDisambiguationInfo(WebInterfaceDirectory):
         if not session['personinfo']['ulevel'] == 'admin':
             msg = "To access the disambiguation facility you should login."
             return page_not_authorized(req, text=msg)
-        argd = wash_urlargd(form, {'ln': (str, CFG_SITE_LANG),
-                                   'should-merge': (str, None)})
+        argd = {'ln': (str, CFG_SITE_LANG)}
+
+        for i in count(start=1):
+            if 'should-merge-%s' % i in form:
+                argd['should-merge-%s' % i] = (str, None)
+            else:
+                break
+        argd = wash_urlargd(form, argd)
 
         if self._task_id < 1:
             redirect_to_url(req, CFG_BASE_URL + '/author/dashboard')
@@ -481,9 +451,17 @@ class WebAuthorDisambiguationInfo(WebInterfaceDirectory):
         page_title = "Disambiguation Results for task %s" % task.task_id
         web_page = WebProfilePage('disambiguation', page_title)
 
-        if argd['should-merge']:
+        if 'should-merge-1' in argd:
             name = get_cluster_info_by_task_id(self._task_id)[0]
-            merge_disambiguation_results(name)
+            to_merge = list()
+            for i in count(start=1):
+                try:
+                    to_merge += argd['should-merge-%s' % i].split('|')
+                except KeyError:
+                    break
+            to_merge = tuple(sig.strip('()').split(', ') for sig in to_merge)
+            to_merge = [(table, int(bibref), int(bibrec)) for table, bibref, bibrec in to_merge]
+            merge_disambiguation_results(name, to_merge)
             update_disambiguation_task_status(self._task_id, 'MERGED')
 
         merged = get_status_of_task_by_task_id(self._task_id) == 'MERGED'
@@ -492,7 +470,7 @@ class WebAuthorDisambiguationInfo(WebInterfaceDirectory):
                 '/author/disambiguation/%s/profile/' % self._task_id
 
         content = {'statistics': stats,
-                   'merged': merged,
+                   'all_merged': merged,
                    'fake_profile_base_url' : CFG_BASE_URL + disambiguate_suburl
                   }
 
