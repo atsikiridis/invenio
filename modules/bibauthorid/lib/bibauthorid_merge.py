@@ -420,7 +420,7 @@ def get_unmatched_clusters(best_match_matrix, results):
     ''' 
     return frozenset(xrange(len(results))) - frozenset(
         imap(itemgetter(0), [x for x in best_match_matrix if x[2] > 0]))
-        
+
 def matched_claims(inspect=None):
     '''
         Checks how many claims are violated in aidRESULTS.
