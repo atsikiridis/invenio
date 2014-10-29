@@ -55,7 +55,7 @@ def initialize_jinja2_environment():
     """ Constructs the environment where the templates should be loaded."""
     TEMPLATES_DIR = "%s/bibauthorid/templates" % CFG_ETCDIR
     loader = FileSystemLoader(TEMPLATES_DIR)
-    environment = Environment(loader=loader)
+    environment = Environment(loader=loader, extensions=['jinja2.ext.do',])
     environment.filters['groupformat'] = group_format_number
     
     return environment

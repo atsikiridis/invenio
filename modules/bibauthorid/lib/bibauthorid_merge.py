@@ -280,7 +280,7 @@ def merge_static():
     update_canonical_names_of_authors()
 
 
-def merge_dynamic(lname=None):
+def merge_dynamic(lname=None, signatures=None):
     '''
         This function merges aidPERSONIDPAPERS with aidRESULTS.
         Use it after tortoise.
@@ -288,6 +288,7 @@ def merge_dynamic(lname=None):
         hence the claiming faciity for example can stay online during the merge. This comfort
         however is paid off in term of speed.
     '''
+
     if lname:
         last_names = [lname]
     else:
@@ -328,16 +329,17 @@ def merge_dynamic(lname=None):
 
     for idx, last in enumerate(last_names):
         logger.update_status(float(idx) / len(last_names), "%d/%d current: %s" % (idx, len(last_names), last))
-        
-        results = get_signatures_for_merge_cluster_by_surname(last)
-        
-        best_match, old_pids = get_merge_matching_matrix_and_pids(results)
-        
-        matched_clusters = _get_matched_clusters(best_match, results, old_pids)
-        
-        not_matched_clusters = _get_unmatched_clusters(best_match, results)
 
-        not_matched_clusters = izip((results[i][1] for i in not_matched_clusters), free_pids)
+        if not signatures:
+            signatures = get_signatures_for_merge_cluster_by_surname(last)
+        
+        best_match, old_pids = get_merge_matching_matrix_and_pids(signatures)
+        
+        matched_clusters = _get_matched_clusters(best_match, signatures, old_pids)
+        
+        not_matched_clusters = _get_unmatched_clusters(best_match, signatures)
+
+        not_matched_clusters = izip((signatures[i][1] for i in not_matched_clusters), free_pids)
         
         for sigs, pid in chain(matched_clusters, not_matched_clusters):
             for sig in sigs:
