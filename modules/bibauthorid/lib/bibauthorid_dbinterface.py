@@ -62,6 +62,7 @@ from invenio.bibauthorid_general_utils import monitored
 from invenio.bibauthorid_logutils import Logger
 import time
 from intbitset import intbitset
+import re
 
 
 # run_sql = monitored(run_sql)
@@ -4339,8 +4340,10 @@ def get_orcid_id_of_signature(sig):
     ext_ids = get_grouped_records(*ext_ids_field).values()[0]
     for ext_id in ext_ids:
         if ext_id.startswith('ORCID:'):
-            return ext_id
-
+            try:
+                return re.search(r"(\d{4}\-){3}\d{4}", ext_id).group()
+            except AttributeError:
+                pass
 
 def get_author_names_from_db(pid):  # get_person_db_names_set
     '''
