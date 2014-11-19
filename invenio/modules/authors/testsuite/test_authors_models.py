@@ -251,7 +251,8 @@ class TestAuthorsModelsClaims(InvenioTestCase, ConfiguredModelsSetup):
         db.session.commit()
         self.clean()
 
-TEST_SUITE = make_test_suite(TestAuthorModels,)
+TEST_SUITE = make_test_suite(TestAuthorModels, TestAuthorsModelsCleanup,
+                             TestAuthorsModelsClaims)
 
 if __name__ == "__main__":
     run_test_suite(TEST_SUITE)
