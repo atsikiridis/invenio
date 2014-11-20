@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-#
+##
 ## This file is part of Invenio.
 ## Copyright (C) 2011, 2012, 2014 CERN.
 ##
@@ -21,10 +21,15 @@
 Tests for Authors Models
 """
 from invenio.testsuite import make_test_suite, run_test_suite, InvenioTestCase
-from invenio.ext.sqlalchemy import db
-from invenio.modules.authors.models import Author, Publication, Signature
-from invenio.modules.accounts.models import User
-from invenio.modules.authors.errors import SignatureExistsError
+from invenio.base.wrappers import lazy_import
+
+db = lazy_import('invenio.ext.sqlalchemy.db')
+Author = lazy_import('invenio.modules.authors.models:Author')
+Publication = lazy_import('invenio.modules.authors.models:Publication')
+Signature = lazy_import('invenio.modules.authors.models:Signature')
+User = lazy_import('invenio.modules.accounts.models:User')
+SignatureExistsError = lazy_import(
+    'invenio.modules.authors.errors:SignatureExistsError')
 
 from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
 
@@ -256,4 +261,3 @@ TEST_SUITE = make_test_suite(TestAuthorModels, TestAuthorsModelsCleanup,
 
 if __name__ == "__main__":
     run_test_suite(TEST_SUITE)
-

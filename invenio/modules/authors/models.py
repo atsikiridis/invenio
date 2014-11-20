@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-#
+##
 ## This file is part of Invenio.
 ## Copyright (C) 2011, 2012, 2014 CERN.
 ##
@@ -17,13 +17,11 @@
 ## along with Invenio; if not, write to the Free Software Foundation, Inc.,
 ## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
 
-"""
-Authors database models.
-"""
+"""Authors database models."""
 
 from invenio.ext.sqlalchemy import db
 from invenio.modules.accounts.models import User
-from invenio.modules.records.models import Record as RecordSQL
+from invenio.modules.records.models import Record
 from invenio.modules.records.api import get_record
 from invenio.modules.authors.errors import SignatureExistsError
 
@@ -45,22 +43,22 @@ class Publication(db.Model):
 
     __mapper_args__ = {'confirm_deleted_rows': False}
 
+    _id_bibrec = db.Column(db.MediumInteger(8, unsigned=True),
+                           db.ForeignKey(Record.id))
+
     id = db.Column(db.Integer(15, unsigned=True), primary_key=True,
                    autoincrement=True, nullable=False)
-    record_sql = db.Column(db.MediumInteger(8, unsigned=True),
-                           db.ForeignKey(RecordSQL.id))
-    __secondaryjoin_q = """and_(Signature._author_id == Author.id,
-                               Signature.attribution.in_(('unknown',
-                                                          'verified')))"""
     authors = db.relationship('Author', secondary='authors_signature',
-                              secondaryjoin=__secondaryjoin_q)
+                              secondaryjoin="""and_(Signature.author == Author,
+                                                    Signature.attribution.in_(
+                                                        ('unknown',
+                                                         'verified')))""")
     references = db.relationship('Publication', secondary=Citation,
                                  primaryjoin=Citation.c.cited == id,
                                  secondaryjoin=Citation.c.citer == id,
                                  backref='citations')
 
     def __repr__(self):
-        """TODO DOCSTRING."""
         return 'Publication(id=%d)' % self.id
 
     def delete(self):
@@ -75,7 +73,7 @@ class Publication(db.Model):
     @property
     def record(self):
         """TODO."""
-        return get_record(self.record_sql.id)
+        return get_record(self._id_bibrec)
 
 
 class Author(db.Model):
@@ -83,26 +81,29 @@ class Author(db.Model):
     """Represents an author entity."""
 
     __tablename__ = 'authors_author'
-
     __mapper_args__ = {'confirm_deleted_rows': False}
+
+    _user_id = db.Column(db.Integer(15, unsigned=True), db.ForeignKey(User.id))
+    _id_bibrec = db.Column(db.MediumInteger(8, unsigned=True),
+                           db.ForeignKey(Record.id))
 
     id = db.Column(db.Integer(15, unsigned=True), primary_key=True,
                    autoincrement=True, nullable=False)
-    _user_id = db.Column(db.Integer(15, unsigned=True), db.ForeignKey(User.id))
-    record_sql = db.Column(db.MediumInteger(8, unsigned=True),
-                           db.ForeignKey(RecordSQL.id))
     user = db.relationship('User')
-    __secondaryjoin_q = """and_(Signature._publication_id == Publication.id,
-                                Signature.attribution.in_(('unknown',
-                                                           'verified')))"""
     publications = db.relationship('Publication',
                                    secondary='authors_signature',
-                                   secondaryjoin=__secondaryjoin_q)
+                                   secondaryjoin="""and_(
+                                       Signature.publication == Publication,
+                                       Signature.attribution.in_(
+                                           ('unknown', 'verified')))""")
+
+    def __repr__(self):
+        return 'Author(id=%d)' % self.id
 
     @property
     def record(self):
         """TODO."""
-        return get_record(self.record_sql.id)
+        return get_record(self._id_bibrec)
 
     @property
     def coauthors(self):
@@ -122,10 +123,6 @@ class Author(db.Model):
         map(citations.update, [pub.citations for pub in self.publications])
         return tuple(citations)
 
-    def __repr__(self):
-        """TODO."""
-        return 'Author(id=%d)' % self.id
-
     def delete(self):
         """TODO."""
         for s in Signature.query.filter(Signature.author == self).all():
@@ -142,18 +139,19 @@ class Signature(db.Model):
     """Represents a signature on a publication."""
 
     __mapper_args__ = {'confirm_deleted_rows': False}
-
     __tablename__ = 'authors_signature'
 
-    id = db.Column(db.Integer(15, unsigned=True), primary_key=True,
-                   autoincrement=True, nullable=False)
-    json = db.Column(db.JSON, default=None)
     _publication_id = db.Column(db.Integer(15, unsigned=True),
                                 db.ForeignKey(Publication.id), nullable=False)
     _author_id = db.Column(db.Integer(15, unsigned=True),
                            db.ForeignKey(Author.id, ondelete="SET NULL"))
     _curator_id = db.Column(db.Integer(15, unsigned=True),
                             db.ForeignKey(User.id))
+
+    id = db.Column(db.Integer(15, unsigned=True), primary_key=True,
+                   autoincrement=True, nullable=False)
+    json = db.Column(db.JSON, default=None)
+
     attribution = db.Column(db.Enum('unknown', 'rejected', 'verified'),
                             default='unknown')
 
@@ -162,7 +160,6 @@ class Signature(db.Model):
     curator = db.relationship('User')
 
     def __repr__(self):
-        """TODO."""
         return 'Signature(id=%d)' % self.id
 
     def claim(self, user):

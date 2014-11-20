@@ -17,17 +17,14 @@
 ## along with Invenio; if not, write to the Free Software Foundation, Inc.,
 ## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
 
-"""
-Defines exceptions raised by Author API.
-"""
+"""Defines exceptions raised by Author API."""
 
 
 class BaseAuthorError(Exception):
-    """
-    General author exception.
-    """
-    pass
+
+    """General author exception."""
 
 
 class SignatureExistsError(BaseAuthorError):
-    pass
+
+    """Should be raised when signature exists."""
