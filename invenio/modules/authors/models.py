@@ -83,7 +83,7 @@ class Author(db.Model):
     __tablename__ = 'authors_author'
     __mapper_args__ = {'confirm_deleted_rows': False}
 
-    _user_id = db.Column(db.Integer(15, unsigned=True), db.ForeignKey(User.id))
+    _id_user = db.Column(db.Integer(15, unsigned=True), db.ForeignKey(User.id))
     _id_bibrec = db.Column(db.MediumInteger(8, unsigned=True),
                            db.ForeignKey(Record.id))
 
@@ -142,9 +142,9 @@ class Signature(db.Model):
 
     _publication_id = db.Column(db.Integer(15, unsigned=True),
                                 db.ForeignKey(Publication.id), nullable=False)
-    _author_id = db.Column(db.Integer(15, unsigned=True),
+    _id_author = db.Column(db.Integer(15, unsigned=True),
                            db.ForeignKey(Author.id, ondelete="SET NULL"))
-    _curator_id = db.Column(db.Integer(15, unsigned=True),
+    _id_curator = db.Column(db.Integer(15, unsigned=True),
                             db.ForeignKey(User.id))
 
     id = db.Column(db.Integer(15, unsigned=True), primary_key=True,
