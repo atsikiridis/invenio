@@ -19,7 +19,7 @@
 
 """Authors database models."""
 
-from invenio.ext.sqlalchemy import db
+from invenio.ext.sqlalchemy import db, utils
 from invenio.modules.accounts.models import User
 from invenio.modules.records.models import Record
 from invenio.modules.records.api import get_record
@@ -53,7 +53,7 @@ class Publication(db.Model):
                                                     Signature.attribution.in_(
                                                         ('unknown',
                                                          'verified')))""")
-    references = db.relationship('Publication', secondary=Citation,
+    references = db.relationship('Publication', secondary='Citation',
                                  primaryjoin=Citation.c.cited == id,
                                  secondaryjoin=Citation.c.citer == id,
                                  backref='citations')
@@ -61,6 +61,7 @@ class Publication(db.Model):
     def __repr__(self):
         return 'Publication(id=%d)' % self.id
 
+    @utils.session_manager
     def delete(self):
         """TODO."""
         sigs = Signature.query.filter(Signature.publication == self).all()
@@ -68,7 +69,6 @@ class Publication(db.Model):
             db.session.delete(s)
 
         db.session.delete(self)
-        db.session.commit()
 
     @property
     def record(self):
@@ -123,15 +123,14 @@ class Author(db.Model):
         map(citations.update, [pub.citations for pub in self.publications])
         return tuple(citations)
 
+    @utils.session_manager
     def delete(self):
         """TODO."""
         for s in Signature.query.filter(Signature.author == self).all():
             s.author = None
             db.session.add(s)
 
-        db.session.commit()
         db.session.delete(self)
-        db.session.commit()
 
 
 class Signature(db.Model):
@@ -162,28 +161,29 @@ class Signature(db.Model):
     def __repr__(self):
         return 'Signature(id=%d)' % self.id
 
+    @utils.session_manager
     def claim(self, user):
         """TODO."""
         self.curator = user
         self.attribution = 'verified'
         db.session.add(self)
-        db.session.commit()
 
+    @utils.session_manager
     def disclaim(self, user):
         """TODO."""
         self.curator = user
         self.attribution = 'rejected'
         db.session.add(self)
-        db.session.commit()
 
+    @utils.session_manager
     def move(self, author, user=None):
         """TODO."""
         self.curator = user
         self.author = author
         db.session.add(self)
-        db.session.commit()
 
     @staticmethod
+    @utils.session_manager
     def reassign(author, user, signature):
         """TODO."""
         try:
@@ -198,9 +198,7 @@ class Signature(db.Model):
             signature.disclaim(user)
             new_signature = Signature(publication=signature.publication,
                                       author=author)
-            db.session.add(signature)
             db.session.add(new_signature)
-            db.session.commit()
         except MultipleResultsFound, e:
             # This should not happen.
             raise e
