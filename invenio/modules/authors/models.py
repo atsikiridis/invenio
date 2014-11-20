@@ -40,7 +40,6 @@ class Publication(db.Model):
     """Represents a publication entity."""
 
     __tablename__ = 'authors_publication'
-
     __mapper_args__ = {'confirm_deleted_rows': False}
 
     _id_bibrec = db.Column(db.MediumInteger(8, unsigned=True),
@@ -150,10 +149,8 @@ class Signature(db.Model):
     id = db.Column(db.Integer(15, unsigned=True), primary_key=True,
                    autoincrement=True, nullable=False)
     json = db.Column(db.JSON, default=None)
-
     attribution = db.Column(db.Enum('unknown', 'rejected', 'verified'),
                             default='unknown')
-
     publication = db.relationship('Publication', backref='signatures')
     author = db.relationship('Author', backref='signatures')
     curator = db.relationship('User')

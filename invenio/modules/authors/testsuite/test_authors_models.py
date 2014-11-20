@@ -21,15 +21,6 @@
 Tests for Authors Models
 """
 from invenio.testsuite import make_test_suite, run_test_suite, InvenioTestCase
-from invenio.base.wrappers import lazy_import
-
-db = lazy_import('invenio.ext.sqlalchemy.db')
-Author = lazy_import('invenio.modules.authors.models:Author')
-Publication = lazy_import('invenio.modules.authors.models:Publication')
-Signature = lazy_import('invenio.modules.authors.models:Signature')
-User = lazy_import('invenio.modules.accounts.models:User')
-SignatureExistsError = lazy_import(
-    'invenio.modules.authors.errors:SignatureExistsError')
 
 from sqlalchemy.orm.exc import NoResultFound, MultipleResultsFound
 
@@ -38,6 +29,8 @@ class ConfiguredModelsSetup(object):
 
     @classmethod
     def prepare(cls):
+        from invenio.ext.sqlalchemy import db
+        from invenio.modules.authors.models import Author, Publication
         cls._publications = [Publication() for _ in range(0, 3)]
         cls._authors = [Author() for _ in range(0, 3)]
 
@@ -109,6 +102,8 @@ class TestAuthorModels(InvenioTestCase, ConfiguredModelsSetup):
 class TestAuthorsModelsCleanup(InvenioTestCase):
 
     def setUp(self):
+        from invenio.ext.sqlalchemy import db
+        from invenio.modules.authors.models import Author, Publication
         self._publications = [Publication() for _ in range(0, 3)]
         self._author = Author()
 
@@ -119,6 +114,7 @@ class TestAuthorsModelsCleanup(InvenioTestCase):
         db.session.commit()
 
     def test_author_deletion(self):
+        from invenio.modules.authors.models import Signature
         """When an author is deleted, the respective signatures should
            have NULL as author. The publications should be there"""
         sigs = Signature.query.filter(
@@ -128,6 +124,7 @@ class TestAuthorsModelsCleanup(InvenioTestCase):
         self.assertEqual([None] * 3, [sig.author for sig in sigs])
 
     def test_publication_deletion(self):
+        from invenio.modules.authors.models import Signature
         """When a publication is deleted the respective signatures should be
            deleted"""
         self._publications[0].delete()
@@ -137,6 +134,8 @@ class TestAuthorsModelsCleanup(InvenioTestCase):
             Signature.publication == deleted_pub).all())
 
     def test_signature_deletion(self):
+        from invenio.ext.sqlalchemy import db
+        from invenio.modules.authors.models import Signature
         pub1 = self._publications[0]
         sign1 = Signature.query.filter(Signature.publication == pub1).all()[0]
         db.session.delete(sign1)
@@ -165,6 +164,8 @@ class TestAuthorsModelsCleanup(InvenioTestCase):
 class TestAuthorsModelsClaims(InvenioTestCase, ConfiguredModelsSetup):
 
     def setUp(self):
+        from invenio.ext.sqlalchemy import db
+        from invenio.modules.accounts.models import User
         self.prepare()
         pub_2 = self._publications[1]
         self._user = User(password='test')
@@ -174,6 +175,8 @@ class TestAuthorsModelsClaims(InvenioTestCase, ConfiguredModelsSetup):
         db.session.commit()
 
     def _get_signature(self, author, publication):
+        from invenio.ext.sqlalchemy import db
+        from invenio.modules.authors.models import Signature
         sig_query = Signature.query.filter(
             db.and_(Signature.author == author,
                     Signature.publication == publication))
@@ -189,6 +192,7 @@ class TestAuthorsModelsClaims(InvenioTestCase, ConfiguredModelsSetup):
         return sig
 
     def test_signature_claim(self):
+        from invenio.modules.authors.models import Signature
         sig = self._get_signature(self._authors[0],
                                   self._publications[1])
         sig_id = sig.id
@@ -200,6 +204,7 @@ class TestAuthorsModelsClaims(InvenioTestCase, ConfiguredModelsSetup):
                          'verified')
 
     def test_signature_disclaim(self):
+        from invenio.modules.authors.models import Signature
         sig = self._get_signature(self._authors[0],
                                   self._publications[1])
         sig_id = sig.id
@@ -216,6 +221,8 @@ class TestAuthorsModelsClaims(InvenioTestCase, ConfiguredModelsSetup):
         self.assertFalse(self._authors[0] in self._publications[1].authors)
 
     def test_signature_move(self):
+        from invenio.ext.sqlalchemy import db
+        from invenio.modules.authors.models import Signature
         sig = self._get_signature(self._authors[0],
                                   self._publications[1])
         sig_len_before = db.session.query(Signature).count()
@@ -231,6 +238,8 @@ class TestAuthorsModelsClaims(InvenioTestCase, ConfiguredModelsSetup):
         self.assertEqual(sig_len_before, sig_len_after)
 
     def test_signature_reassignment(self):
+        from invenio.ext.sqlalchemy import db
+        from invenio.modules.authors.models import Signature
         sig = self._get_signature(self._authors[0], self._publications[2])
         sig_len_before = db.session.query(Signature).count()
         Signature.reassign(self._authors[2], self._user, sig)
@@ -242,6 +251,8 @@ class TestAuthorsModelsClaims(InvenioTestCase, ConfiguredModelsSetup):
         self.assertTrue(one_sig)
 
     def test_signature_reassignment_already_assigned(self):
+        from invenio.modules.authors.models import Signature
+        from invenio.modules.authors.errors import SignatureExistsError
         sig = self._get_signature(self._authors[0], self._publications[1])
         try:
             with self.assertRaises(SignatureExistsError):
@@ -252,6 +263,7 @@ class TestAuthorsModelsClaims(InvenioTestCase, ConfiguredModelsSetup):
                 the same pair of Author and Publications""")                  
 
     def tearDown(self):
+        from invenio.ext.sqlalchemy import db
         db.session.delete(self._user)
         db.session.commit()
         self.clean()
