@@ -2,6 +2,8 @@ import numpy as np
 
 from scipy.sparse import lil_matrix, csr_matrix
 from itertools import groupby
+
+
 from invenio.dbquery import run_sql
 
 """
@@ -12,6 +14,9 @@ from invenio.dbquery import run_sql
                                    affiliation(s),
                                    field number (order it appears),
                                    bibrec)
+       signatures
+       records
+       matrix
 
 
       2) Build an affinity matrix.
@@ -29,14 +34,90 @@ from invenio.dbquery import run_sql
 """
 
 
+def get_affiliation(personid, bibrec):
+    """Returns  insutitution name and field number. """
+    q = run_sql("""SELECT f2.value, r.field_number
+                   FROM aidPERSONIDPAPERS AS a
+                   INNER JOIN bibrec AS b ON (a.bibrec = b.id)
+                   INNER JOIN bibrec_bib10x AS r ON (b.id = r.id_bibrec)
+                   INNER JOIN bib10x AS f ON (r.id_bibxxx = f.id)
+                   INNER JOIN bibrec_bib10x AS r2 ON (b.id = r2.id_bibrec) AND (r.field_number = r2.field_number)
+                   INNER JOIN bib10x AS f2 ON (r2.id_bibxxx = f2.id)
+                   WHERE a.personid = %d AND
+                         r.id_bibrec = %d AND
+                         f.tag = '100__a' AND
+                         f.value = a.name AND
+                         f2.tag = '100__u'
+                   UNION
+                   SELECT f2.value, r.field_number
+                   FROM aidPERSONIDPAPERS AS a
+                   INNER JOIN bibrec AS b ON (a.bibrec = b.id)
+                   INNER JOIN bibrec_bib70x AS r ON (b.id = r.id_bibrec)
+                   INNER JOIN bib70x AS f ON (r.id_bibxxx = f.id)
+                   INNER JOIN bibrec_bib70x AS r2 ON (b.id = r2.id_bibrec) AND (r.field_number = r2.field_number)
+                   INNER JOIN bib70x AS f2 ON (r2.id_bibxxx = f2.id)
+                   WHERE a.personid = %d AND
+                         r.id_bibrec = %d AND
+                         f.tag = '700__a' AND
+                         f.value = a.name AND
+                         f2.tag = '700__u'""" % (personid, bibrec,
+                                                 personid, bibrec))
+
+    if len(q) > 0:
+        return q
+    else:
+        return None
+
+def get_position_in_marc(personid, bibrec):
+    """Returns  field number. """
+    q = run_sql("""SELECT r.field_number
+                   FROM aidPERSONIDPAPERS AS a
+                   INNER JOIN bibrec AS b ON (a.bibrec = b.id)
+                   INNER JOIN bibrec_bib10x AS r ON (b.id = r.id_bibrec)
+                   INNER JOIN bib10x AS f ON (r.id_bibxxx = f.id)
+                   INNER JOIN bibrec_bib10x AS r2 ON (b.id = r2.id_bibrec) AND (r.field_number = r2.field_number)
+                   INNER JOIN bib10x AS f2 ON (r2.id_bibxxx = f2.id)
+                   WHERE a.personid = %d AND
+                         r.id_bibrec = %d AND
+                         f.tag = '100__a' AND
+                         f.value = a.name
+                   UNION
+                   SELECT r.field_number
+                   FROM aidPERSONIDPAPERS AS a
+                   INNER JOIN bibrec AS b ON (a.bibrec = b.id)
+                   INNER JOIN bibrec_bib70x AS r ON (b.id = r.id_bibrec)
+                   INNER JOIN bib70x AS f ON (r.id_bibxxx = f.id)
+                   INNER JOIN bibrec_bib70x AS r2 ON (b.id = r2.id_bibrec) AND (r.field_number = r2.field_number)
+                   INNER JOIN bib70x AS f2 ON (r2.id_bibxxx = f2.id)
+                   WHERE a.personid = %d AND
+                         r.id_bibrec = %d AND
+                         f.tag = '700__a' AND
+                         f.value = a.name """ % (personid, bibrec,
+                                                 personid, bibrec))
+
+    if len(q) > 0:
+        return q
+    else:
+        return None
+
+
+
 def extract_data_from_signatures(signatures):
     data = list()
-    for sig in signatures:
-        data.append({'name': sig[-2],
-                     'bibrec': sig[3],
-                     'affiliation': None,
-                     'field_number': None})
-
+    for i, signature in enumerate(signatures):
+        if i % 1000 == 0:
+            print i
+        try:
+            affiliation = get_affiliation(signature[0], signature[1])[0][0]
+        except TypeError:
+            continue
+        position = get_position_in_marc(signature[0], signature[1])[0][0]
+        data.append({'signature_id': i,
+                     'author_name': signature[2],
+                     'publication_id': signature[1],
+                     'author_affiliation': affiliation,
+                     'signature_position': position})
+    return data
 
 
 def signature_similarity(all_signatures):
@@ -44,8 +125,10 @@ def signature_similarity(all_signatures):
     similarity = lil_matrix((n_signatures, n_signatures), dtype=np.int8)
     counter = 0
 
-    for n, (personid, signatures) in enumerate(groupby(all_signatures, lambda x: x[0])):
-        if n % 1000 == 0: print n
+    for n, (personid, signatures) in enumerate(groupby(all_signatures,
+                                                       lambda x: x[0])):
+        if n % 1000 == 0:
+            print n
 
         signatures = list(signatures)
         vector = np.zeros((len(signatures, )), dtype=np.complex)
@@ -70,10 +153,11 @@ def signature_similarity(all_signatures):
 
     return similarity
 
-signatures = run_sql("""select personid, flag from aidPERSONIDPAPERS """)
+signatures = run_sql("""select personid, bibrec, name, flag from aidPERSONIDPAPERS """)
 no_of_sigs = len(signatures)
 signatures = sorted(signatures)
-matrix = signature_similarity(signatures)
+data = extract_data_from_signatures(signatures)
+#matrix = signature_similarity(signatures)
 
-print matrix.shape
-print matrix.nnz
+#print matrix.shape
+#print matrix.nnz
