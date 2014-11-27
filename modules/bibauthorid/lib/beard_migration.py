@@ -1,10 +1,9 @@
 import numpy as np
+import cPickle
+
 from joblib import Parallel, delayed
-
-
 from scipy.sparse import lil_matrix, csr_matrix
 from itertools import groupby
-
 
 from invenio.dbquery import run_sql
 
@@ -36,46 +35,36 @@ from invenio.dbquery import run_sql
 """
 
 
-def get_affiliation(personid, bibrec, table):
+def get_affiliation(personid, table):
     """Returns  insutitution name and field number. """
     table_name = str(table)[0:2] + 'x'
-    q = run_sql("""SELECT f2.value, r.field_number
-                   FROM aidPERSONIDPAPERS AS a
+    q = run_sql("""SELECT f2.value, r2.field_number
+                   FROM aidPERSONIDPAPERS as a
                    INNER JOIN bibrec AS b ON (a.bibrec = b.id)
                    INNER JOIN bibrec_bib%s AS r ON (b.id = r.id_bibrec)
                    INNER JOIN bib%s AS f ON (r.id_bibxxx = f.id)
                    INNER JOIN bibrec_bib%s AS r2 ON (b.id = r2.id_bibrec) AND (r.field_number = r2.field_number)
                    INNER JOIN bib%s AS f2 ON (r2.id_bibxxx = f2.id)
                    WHERE a.personid = %d AND
-                         r.id_bibrec = %d AND
                          f.tag = '%s__a' AND
                          f.value = a.name AND
                          f2.tag = '%s__u'
-
                  """ % (table_name, table_name, table_name, table_name,
-                        personid, bibrec, table, table))
-
+                        personid, table, table))
     if len(q) > 0:
         return q
     else:
         return None
 
-def get_position_in_marc(personid, bibrec, table):
-    """Returns  field number. """
+def get_position_in_marc(table, bibref, bibrec ):
+    """Returns field number. """
     table_name = str(table)[0:2] + 'x'
-    q = run_sql("""SELECT r.field_number
-                   FROM aidPERSONIDPAPERS AS a
-                   INNER JOIN bibrec AS b ON (a.bibrec = b.id)
-                   INNER JOIN bibrec_bib%s AS r ON (b.id = r.id_bibrec)
-                   INNER JOIN bib%s AS f ON (r.id_bibxxx = f.id)
-                   INNER JOIN bibrec_bib%s AS r2 ON (b.id = r2.id_bibrec) AND (r.field_number = r2.field_number)
-                   INNER JOIN bib%s AS f2 ON (r2.id_bibxxx = f2.id)
-                   WHERE a.personid = %d AND
-                         r.id_bibrec = %d AND
-                         f.tag = '%s__a' AND
-                         f.value = a.name
+    q = run_sql("""SELECT field_number
+                   FROM bib%s, bibrec_bib%s
+                   WHERE bib%s.id = bibrec_bib%s.id_bibxxx AND
+                   bib%s.id = %s AND bibrec_bib%s.id_bibrec = %s
                  """ % (table_name, table_name, table_name, table_name,
-                        personid, bibrec, table))
+                        table_name, bibref, table_name, bibrec))
 
     if len(q) > 0:
         return q
@@ -85,15 +74,14 @@ def get_position_in_marc(personid, bibrec, table):
 
 def parallel_signature_getter(i, signature):
     try:
-        affiliation, position = get_affiliation(signature[0], signature[1],
-                                                signature[2])[0]
+        affiliation, position = get_affiliation(signature[0], signature[1])[0]
     except TypeError:
         affiliation = None
-        position = get_position_in_marc(signature[0], signature[1],
-                                        signature[2])[0][0]
+        position = get_position_in_marc(signature[1], signature[2],
+                                        signature[3])[0][0]
     return {'signature_id': i,
-            'author_name': signature[3],
-            'publication_id': signature[1],
+            'author_name': signature[4],
+            'publication_id': signature[3],
             'author_affiliation': affiliation,
             'signature_position': position}
 
@@ -141,10 +129,18 @@ def signature_similarity(all_signatures):
 
     return similarity
 
-signatures = run_sql("""select personid, bibrec, bibref_table, name, flag from aidPERSONIDPAPERS""")
+signatures = run_sql("""select personid, bibref_table, bibref_value, bibrec, name, flag from aidPERSONIDPAPERS""")
 no_of_sigs = len(signatures)
 signatures = sorted(signatures)
-data = extract_data_from_signatures(signatures)
+
+step = 100000
+filename = "signatures-%010d"
+
+for start in range(0, len(signatures), step):
+    data = extract_data_from_signatures(signatures[start:min(start+step, len(signatures))])
+    cPickle.dump(data, open(filename % start, "w"))
+
+
 #matrix = signature_similarity(signatures)
 
 #print matrix.shape
