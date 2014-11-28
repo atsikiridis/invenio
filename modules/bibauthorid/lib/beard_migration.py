@@ -15,6 +15,8 @@ from invenio.dbquery import run_sql
                                    affiliation(s),
                                    field number (order it appears),
                                    bibrec)
+
+       FILTER ALL REJECTED SIGNATURES
        signatures
        records
        matrix
@@ -32,6 +34,7 @@ from invenio.dbquery import run_sql
 
 
       3) Export records to files and define getters ( bibrec -> string)
+         fields -- title,
 """
 
 
@@ -96,30 +99,26 @@ def extract_data_from_signatures(signatures):
     return data
 
 
-def signature_similarity(all_signatures):
-    n_signatures = len(all_signatures)
+def populate_signature_similarity(positive_signatures):
+    n_signatures = len(positive_signatures)
     similarity = lil_matrix((n_signatures, n_signatures), dtype=np.int8)
     counter = 0
 
-    for n, (personid, signatures) in enumerate(groupby(all_signatures,
+    for n, (personid, signatures) in enumerate(groupby(positive_signatures,
                                                        lambda x: x[0])):
         if n % 1000 == 0:
             print n
 
         signatures = list(signatures)
-        vector = np.zeros((len(signatures, )), dtype=np.complex)
+        vector = np.zeros((len(signatures, )), dtype=np.int8)
 
         for i, s in enumerate(signatures):
             if s[-1] == 2:
                 vector[i] = 1
-            elif s[-1] == -2:
-                vector[i] = 1j
 
         vector = csr_matrix(vector)
 
         block = vector.T * vector
-        block[block == -1.] = 0
-        block[block == 1j] = -1
         block = block.astype(np.int8)
 
         similarity[counter:counter + len(signatures), counter:counter + len(signatures)] = block
@@ -129,19 +128,37 @@ def signature_similarity(all_signatures):
 
     return similarity
 
-signatures = run_sql("""select personid, bibref_table, bibref_value, bibrec, name, flag from aidPERSONIDPAPERS""")
-no_of_sigs = len(signatures)
-signatures = sorted(signatures)
 
+def add_rejection_claims(matrix, rejected_signatures, signature_id_mapping, personid_signature_mapping):
+    for rejected_sig in rejected_signatures:
+        if rejected_sig[1:4] not in signature_id_mapping:
+            continue
+        id = signature_id_mapping[rejected_sig[1:4]]
+        if rejected_sig[0] not in personid_signature_mapping:
+            continue
+        claimed_sigs_of_person = personid_signature_mapping[rejected_sig[0]]
+        for sig in claimed_sigs_of_person:
+            matrix[id, signature_id_mapping[sig[1:4]]] = -1
+            matrix[signature_id_mapping[sig[1:4]], id] = -1
+
+    return matrix
+
+
+
+all_signatures = set(run_sql("""select personid, bibref_table, bibref_value, bibrec, name, flag from aidPERSONIDPAPERS"""))
+positive_signatures = filter(lambda x: x[-1] >= 0, all_signatures)
+positive_signatures = sorted(positive_signatures)
 step = 100000
 filename = "signatures-%010d"
 
-for start in range(0, len(signatures), step):
-    data = extract_data_from_signatures(signatures[start:min(start+step, len(signatures))])
+for start in range(0, len(positive_signatures), step):
+    data = extract_data_from_signatures(positive_signatures[start:min(start+step, len(positive_signatures))])
     cPickle.dump(data, open(filename % start, "w"))
 
 
-#matrix = signature_similarity(signatures)
-
-#print matrix.shape
-#print matrix.nnz
+matrix = populate_signature_similarity(positive_signatures)
+signature_id_mapping = {sig[1:4]:i for i, sig in enumerate(positive_signatures)}
+personid_signature_mapping = {pid: list(sigs) for pid, sigs in groupby(filter(lambda x: x[-1] == 2, positive_signatures), lambda x: x[0])}
+matrix = add_rejection_claims(matrix, all_signatures - set(positive_signatures), signature_id_mapping, personid_signature_mapping)
+print matrix.shape
+print matrix.nnz
