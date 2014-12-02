@@ -1,4 +1,6 @@
 import numpy as np
+
+import argparse
 import cPickle
 
 from joblib import Parallel, delayed
@@ -6,9 +8,15 @@ from scipy.sparse import lil_matrix, csr_matrix
 from itertools import groupby
 
 from invenio.dbquery import run_sql
+from invenio.bibauthorid_dbinterface import get_title_of_paper
+from invenio.bibrank_citation_searcher import get_refers_to
 
 """
  TODO 1) Extract all signatures
+
+
+             Add a prefix to the script
+
              - agree on the feature extraction dict.
                  fields of dict = (name of author (as it appears on the paper
                  IDEALLY but last name, first name for now),
@@ -16,10 +24,6 @@ from invenio.dbquery import run_sql
                                    field number (order it appears),
                                    bibrec)
 
-       FILTER ALL REJECTED SIGNATURES
-       signatures
-       records
-       matrix
 
 
       2) Build an affinity matrix.
@@ -34,8 +38,36 @@ from invenio.dbquery import run_sql
 
 
       3) Export records to files and define getters ( bibrec -> string)
-         fields -- title,
+         fields -- title, list of authors, institutions, references
 """
+
+
+def get_record_metadata(record_id):
+    authors = run_sql(""" select  f.value, f2.value FROM bibrec_bib10x as r
+
+                          INNER JOIN bib10x as f ON r.id_bibxxx = f.id
+                                 and f.tag = '100__a'
+                          INNER JOIN bibrec_bib10x AS r2 ON (r.id_bibrec = r2.id_bibrec)
+                          LEFT JOIN bib10x AS f2 ON (r2.id_bibxxx = f2.id)
+                              AND f2.tag = '100__u'
+                          WHERE r.id_bibrec =%s
+
+                          UNION
+
+                          select f.value, f2.value from bibrec_bib70x as r
+                          INNER JOIN bib70x as f on r.id_bibxxx = f.id
+                               and f.tag = '700__a'
+                          INNER JOIN bibrec_bib70x AS r2 ON (r.id_bibrec = r2.id_bibrec)
+                          LEFT JOIN bib70x AS f2 ON (r2.id_bibxxx = f2.id)
+                              AND f2.tag = '700__u'
+                          WHERE r.id_bibrec =%s
+
+
+                          """ % (record_id, record_id))
+
+    return {'title': get_title_of_paper(record_id),
+            'authors': authors,
+            'references': get_refers_to(record_id)}
 
 
 def get_affiliation(personid, table):
@@ -46,7 +78,8 @@ def get_affiliation(personid, table):
                    INNER JOIN bibrec AS b ON (a.bibrec = b.id)
                    INNER JOIN bibrec_bib%s AS r ON (b.id = r.id_bibrec)
                    INNER JOIN bib%s AS f ON (r.id_bibxxx = f.id)
-                   INNER JOIN bibrec_bib%s AS r2 ON (b.id = r2.id_bibrec) AND (r.field_number = r2.field_number)
+                   INNER JOIN bibrec_bib%s AS r2 ON (b.id = r2.id_bibrec)
+                       AND (r.field_number = r2.field_number)
                    INNER JOIN bib%s AS f2 ON (r2.id_bibxxx = f2.id)
                    WHERE a.personid = %d AND
                          f.tag = '%s__a' AND
@@ -58,6 +91,7 @@ def get_affiliation(personid, table):
         return q
     else:
         return None
+
 
 def get_position_in_marc(table, bibref, bibrec ):
     """Returns field number. """
@@ -121,7 +155,9 @@ def populate_signature_similarity(positive_signatures):
         block = vector.T * vector
         block = block.astype(np.int8)
 
-        similarity[counter:counter + len(signatures), counter:counter + len(signatures)] = block
+        similarity[counter:counter + len(signatures),
+            counter:counter + len(signatures)] = block
+
         counter += len(signatures)
 
     similarity.setdiag(1)
@@ -129,7 +165,8 @@ def populate_signature_similarity(positive_signatures):
     return similarity
 
 
-def add_rejection_claims(matrix, rejected_signatures, signature_id_mapping, personid_signature_mapping):
+def add_rejection_claims(matrix, rejected_signatures, signature_id_mapping,
+                         personid_signature_mapping):
     for rejected_sig in rejected_signatures:
         if rejected_sig[1:4] not in signature_id_mapping:
             continue
@@ -144,21 +181,51 @@ def add_rejection_claims(matrix, rejected_signatures, signature_id_mapping, pers
     return matrix
 
 
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Compute similarity matrix.')
+    parser.add_argument('prefix', type=str,
+                        help='gets all names starting with a prefix')
+    args = parser.parse_args()
 
-all_signatures = set(run_sql("""select personid, bibref_table, bibref_value, bibrec, name, flag from aidPERSONIDPAPERS"""))
-positive_signatures = filter(lambda x: x[-1] >= 0, all_signatures)
-positive_signatures = sorted(positive_signatures)
-step = 100000
-filename = "signatures-%010d"
+    all_signatures = set(run_sql("""select personid, bibref_table,
+                                    bibref_value, bibrec, name, flag
+                                    from aidPERSONIDPAPERS where name
+                                    like %s limit 100 """, (args.prefix + '%', )))
 
-for start in range(0, len(positive_signatures), step):
-    data = extract_data_from_signatures(positive_signatures[start:min(start+step, len(positive_signatures))])
-    cPickle.dump(data, open(filename % start, "w"))
+    positive_signatures = filter(lambda x: x[-1] >= 0, all_signatures)
+    positive_signatures = sorted(positive_signatures)
+    step = 100000
+    filename = "signatures-%010d"
 
+    print 'Step 1: Extracting data from signatures...'
+    for start in range(0, len(positive_signatures), step):
+        data = extract_data_from_signatures(
+            positive_signatures[start:min(start+step,
+                                          len(positive_signatures))])
+        cPickle.dump(data, open(filename % start, "w"))
+    print 'Done!'
 
-matrix = populate_signature_similarity(positive_signatures)
-signature_id_mapping = {sig[1:4]:i for i, sig in enumerate(positive_signatures)}
-personid_signature_mapping = {pid: list(sigs) for pid, sigs in groupby(filter(lambda x: x[-1] == 2, positive_signatures), lambda x: x[0])}
-matrix = add_rejection_claims(matrix, all_signatures - set(positive_signatures), signature_id_mapping, personid_signature_mapping)
-print matrix.shape
-print matrix.nnz
+    print 'Step 2: Populating similarity matrix...'
+    matrix = populate_signature_similarity(positive_signatures)
+    signature_id_mapping = {sig[1:4]: i
+                            for i, sig in enumerate(positive_signatures)}
+    personid_signature_mapping = {pid: list(sigs) for pid, sigs in
+                                  groupby(filter(lambda x: x[-1] == 2,
+                                                 positive_signatures),
+                                          lambda x: x[0])}
+    matrix = add_rejection_claims(matrix,
+                                  all_signatures - set(positive_signatures),
+                                  signature_id_mapping,
+                                  personid_signature_mapping)
+
+    print 'Shape of matrix is %s.' % str(matrix.shape)
+    print 'The number of non zero values is %s' % matrix.nnz
+    print 'Done!'
+
+    print 'Step 3: Extracting record metadata.'
+    metadata = dict()
+    for i, rec_id in enumerate(set(sig[3] for sig in positive_signatures)):
+        if i % 1000 == 0:
+            print i
+        metadata[rec_id] = get_record_metadata(rec_id)
+    cPickle.dump(metadata, open('record_metadata', 'w'))
