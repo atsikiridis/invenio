@@ -1984,7 +1984,30 @@ def get_data_union_for_merged_profiles(persons_data, new_profile_bibrecrefs):
     return list(set(new_profile_data))
 
 
+class MergeCoauthorsError(Exception):
+    """Should be raised when trying to merge an author to a coauthor."""
+
+    def __init__(self, conflicting_pid, primary_pid):
+
+        conflicting_profile = get_canonical_id_from_person_id(conflicting_pid)
+        primary_profile = get_canonical_id_from_person_id(primary_pid)
+        msg = """Cannot merge profile of author %s to  the profile of author
+                 %s. Authors are coauthors in one or more
+                 papers.""" % (conflicting_profile, primary_profile)
+        super(MergeCoauthorsError, self).__init__(msg)
+
+        self.conflicting_pid = conflicting_pid
+        self.primary_pid = primary_pid
+
+
 def merge_profiles(primary_pid, pids_to_merge):
+
+    # If a profile is a coauthor to the primary profile,
+    # the merging should not happen.
+    coauthors = [pid for pid, _ in dbapi.get_coauthors_of_author(primary_pid)]
+    for pid in pids_to_merge:
+        if pid in coauthors:
+            raise MergeCoauthorsError(pid, primary_pid)
 
     def merge_papers():
         primary_recs = [rec[0] for rec in dbapi.get_papers_of_author(primary_pid)]

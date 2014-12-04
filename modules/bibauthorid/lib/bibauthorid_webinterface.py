@@ -1194,10 +1194,12 @@ class WebInterfaceBibAuthorIDClaimPages(WebInterfaceDirectory):
                 return redirect_to_url(req, redirect_url)
 
             if is_admin:
-                webapi.merge_profiles(primary_pid, pids_to_merge)
-                # when redirected back to the manage profile page display a message about the currently attempted merge
-                pinfo['merge_info_message'] = ("success", "confirm_success")
-
+                try:
+                    webapi.merge_profiles(primary_pid, pids_to_merge)
+                except webapi.MergeCoauthorsError as e:
+                    session.dirty = True
+                    req.status = apache.HTTP_CONFLICT
+                    return e
             else:
                 name = ''
                 if 'user_last_name' in pinfo:
